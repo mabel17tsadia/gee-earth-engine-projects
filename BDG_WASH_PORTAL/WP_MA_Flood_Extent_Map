@@ -75,7 +75,7 @@ var processImages = function() {
   var results = ui.Panel({
     style: {position: 'bottom-left', padding: '8px 15px', width: '350px'}
   });
-  var title = ui.Label('Results', {fontSize: '18px', color: '3333ff'});
+  var title = ui.Label('Flood Extent Map', {fontSize: '18px', color: '3333ff'});
   var text1 = ui.Label('Flood status between:', {fontWeight: 'bold'});
   var number1 = ui.Label(after_start + ' and ' + after_end, {color: 'bf0f19', fontWeight: 'bold'});
   var text2 = ui.Label('Estimated flood extent:', {fontWeight: 'bold'});
