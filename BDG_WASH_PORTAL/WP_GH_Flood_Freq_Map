@@ -1,0 +1,179 @@
+var Ghana = ee.FeatureCollection('USDOS/LSIB_SIMPLE/2017')
+                .filter(ee.Filter.eq('country_co', 'GH'));
+
+// -------------------------------
+// Flood Frequency Mapping (2015–2025)
+// GHANA AOI
+// -------------------------------
+
+// Step 1: AOI Definition
+var geometry = Ghana.geometry();  // upload shapefile for Ghana
+Map.centerObject(geometry);
+Map.addLayer(geometry, {color: 'grey'}, ' Ghana AOI');
+
+var aoi = geometry
+// Step 2: Sentinel-1 Helper Function
+function getCollection(start, end) {
+  return ee.ImageCollection('COPERNICUS/S1_GRD')
+    .filterBounds(aoi)
+    .filterDate(start, end)
+    .filter(ee.Filter.eq('instrumentMode', 'IW'))
+    .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+    .filter(ee.Filter.eq('orbitProperties_pass', 'ASCENDING')) // Ensure consistent orbit direction
+    .select('VV')
+    .map(function(img) {
+      // Apply speckle filter to reduce noise
+      return img.focal_median(30, 'circle', 'meters')
+        .copyProperties(img, ['system:time_start']);
+    });
+}
+
+// Step 3: Pull Collection for Period
+var startDate = '2015-01-01';
+var endDate = '2025-12-31';
+var s1 = getCollection(startDate, endDate);
+print('Total S1 images in period (AOI):', s1.size());
+
+// Step 4: Build Baseline (Dry Season)
+var drySeason = getCollection(startDate, endDate)
+  .filter(ee.Filter.calendarRange(1, 3, 'month')); // Dry season: Jan–Mar
+var baseline = drySeason.median();
+
+// Step 5: Flood Detection per Image
+function detectFlood(img) {
+  var ratio = img.divide(baseline);
+  var threshold = 0.7; // Adjust based on validation (e.g., 0.6 for urban, 0.8 for vegetation)
+  var flooded = ratio.lt(threshold).rename('flood');
+  return flooded.copyProperties(img, ['system:time_start']);
+}
+var floodMaskCol = s1.map(detectFlood);
+
+// Step 6: Frequency Calculation
+var floodCount = floodMaskCol.sum();
+var totalCount = floodMaskCol.count();
+var minImages = 50; // Minimum number of images for reliable frequency
+var frequency = floodCount.divide(totalCount).multiply(100)
+  .where(totalCount.lt(minImages), ee.Image(0)); // Mask areas with insufficient data
+
+// Step 7: Classify into Categories
+var classes = ee.Image(0)
+  .where(totalCount.lt(minImages), -1)                // No Data
+  .where(frequency.eq(0), 0)                         // Never
+  .where(frequency.gt(0).and(frequency.lte(10)), 1)  // Rare
+  .where(frequency.gt(10).and(frequency.lte(30)), 2) // Moderate
+  .where(frequency.gt(30).and(frequency.lte(60)), 3) // Frequent
+  .where(frequency.gt(60), 4);                       // Severe
+
+// Step 8: Visualization
+var freqVis = {
+  min: 0, max: 100,
+  palette: ['#F7F7F7', '#F4A582', '#D6604D', '#B2182B', '#67000D'] // Colorblind-friendly
+};
+var classVis = {
+  min: -1, max: 4,
+  palette: ['#D3D3D3', '#F7F7F7', '#92C5DE', '#0571B0', '#CA0020', '#4D004B'] // Includes No Data
+};
+
+Map.addLayer(frequency.clip(aoi), freqVis, 'Flood Frequency (%)');
+Map.addLayer(classes.clip(aoi), classVis, 'Flood Frequency Classes');
+
+// Step 9: Styled Legend
+var legend = ui.Panel({style: {position: 'bottom-right', padding: '8px 15px'}});
+legend.add(ui.Label('Flood Frequency Map (2015–2025)', 
+    {fontWeight: 'bold', fontSize: '16px', margin: '0 0 6px 0', color: '#111'}));
+
+function makeRow(color, label) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: color,
+      padding: '8px',
+      margin: '0 8px 4px 0'
+    }
+  });
+  var description = ui.Label(label, {margin: '0 0 4px 0'});
+  return ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+}
+
+legend.add(makeRow('#D3D3D3', '-1 – No Data'));
+legend.add(makeRow('#F7F7F7', '0 – Never flooded'));
+legend.add(makeRow('#92C5DE', '1 – Very low / Rare (≤10%)'));
+legend.add(makeRow('#0571B0', '2 – Moderate (10–30%)'));
+legend.add(makeRow('#CA0020', '3 – High / Frequent (30–60%)'));
+legend.add(makeRow('#4D004B', '4 – Severe / Very frequent (>60%)'));
+
+Map.add(legend);
+
+// Step 10: Validation and Annual Flood Frequency Chart
+// Print sample flood dates for validation
+print('Sample Flood Dates:', floodMaskCol.filter(ee.Filter.eq('flood', 1)).aggregate_array('system:time_start'));
+
+// Calculate annual flood frequency (% of AOI flooded per year)
+var years = ee.List.sequence(2015, 2025); // 2015–2024 (2025 may be incomplete)
+var annualFloodFreq = years.map(function(year) {
+  var yearStart = ee.Date.fromYMD(year, 1, 1);
+  var yearEnd = ee.Date.fromYMD(year, 12, 31);
+  var yearlyFloods = floodMaskCol.filterDate(yearStart, yearEnd);
+  var meanFlood = yearlyFloods.mean().rename('flood');
+  var floodArea = meanFlood.multiply(ee.Image.pixelArea()).reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: aoi,
+    scale: 30, // Coarser scale to avoid timeout
+    maxPixels: 1e10
+  }).get('flood');
+  var totalArea = ee.Image.pixelArea().reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: aoi,
+    scale: 30,
+    maxPixels: 1e10
+  }).get('area');
+  var floodPercent = ee.Number(floodArea).divide(totalArea).multiply(100);
+  return ee.Feature(null, {
+    'year': year,
+    'flood_percent': floodPercent
+  });
+});
+
+// Create time-series chart
+var chart = ui.Chart.feature.byFeature({
+  features: ee.FeatureCollection(annualFloodFreq),
+  xProperty: 'year',
+  yProperties: ['flood_percent']
+}).setChartType('ColumnChart')
+  .setOptions({
+    title: 'Annual Flood Frequency (2015–2025)',
+    hAxis: {title: 'Year', format: '####'},
+    vAxis: {title: 'Flooded Area (% of AOI)', minValue: 0, maxValue: 100},
+    legend: {position: 'none'},
+    colors: ['#0571B0']
+  });
+print('Annual Flood Frequency Chart:', chart);
+
+// Export annual flood frequency data as CSV
+Export.table.toDrive({
+  collection: ee.FeatureCollection(annualFloodFreq),
+  description: 'Annual_Flood_Frequency_2015_2024',
+  folder: 'GEE_Exports',
+  fileFormat: 'CSV'
+});
+
+// Step 11: Export Results
+Export.image.toDrive({
+  image: frequency.clip(aoi),
+  description: 'Flood_Frequency_2015_2025',
+  folder: 'GEE_Exports',
+  scale: 10,
+  region: aoi,
+  maxPixels: 1e10
+});
+
+Export.image.toDrive({
+  image: classes.clip(aoi),
+  description: 'Flood_Frequency_Classes_2015_2025',
+  folder: 'GEE_Exports',
+  scale: 10,
+  region: aoi,
+  maxPixels: 1e10
+});

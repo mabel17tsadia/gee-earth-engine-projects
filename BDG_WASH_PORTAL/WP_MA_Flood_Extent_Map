@@ -1,0 +1,102 @@
+// Load AOI from Assets
+var Madina_Adentan = ee.FeatureCollection("projects/mabeltsadia/assets/Madina_Adentan");
+
+// Step 1: Study Area
+var geometry = Madina_Adentan.geometry();
+
+Map.centerObject(geometry);
+Map.addLayer(geometry, {color: 'grey'}, 'Madina_Adentan AOI');
+
+var aoi = geometry;
+
+// Step 2: Time Frame
+var before_start = '2018-06-05';
+var before_end = '2018-06-17';
+var after_start = '2025-05-01';
+var after_end = '2025-05-30';
+
+// Step 3: Sensor Parameters
+var polarization = ['VH'];
+var pass_direction = 'DESCENDING';
+var difference_threshold = 1.0;
+
+var collection = ee.ImageCollection('COPERNICUS/S1_GRD')
+  .filter(ee.Filter.eq('instrumentMode', 'IW'))
+  .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
+  // Remove pass_direction filter to increase data availability
+  .filterBounds(aoi)
+  .select('VH');
+
+var before_collection = collection.filterDate(before_start, before_end);
+var after_collection = collection.filterDate(after_start, after_end);
+
+// Debug: Check collection sizes
+var before_count = before_collection.size();
+var after_count = after_collection.size();
+print('Before Collection Count:', before_count);
+print('After Collection Count:', after_count);
+
+// Step 4: Process only if collections are not empty
+var processImages = function() {
+  var before = before_collection.mosaic().clip(aoi);
+  var after = after_collection.mosaic().clip(aoi);
+
+  // Speckle filtering
+  var smoothing_radius = 50;
+  var before_filtered = before.focal_mean(smoothing_radius, 'circle', 'meters');
+  var after_filtered = after.focal_mean(smoothing_radius, 'circle', 'meters');
+
+  // Difference and thresholding
+  var difference = after_filtered.divide(before_filtered);
+  var difference_binary = difference.gt(difference_threshold);
+
+  // Refine flood mask
+  var swater = ee.Image('JRC/GSW1_0/GlobalSurfaceWater').select('seasonality');
+  var swater_mask = swater.gte(10).updateMask(swater.gte(10));
+  var flooded_mask = difference_binary.where(swater_mask, 0);
+  var flooded = flooded_mask.updateMask(flooded_mask);
+  var connections = flooded.connectedPixelCount();
+  var flooded = flooded.updateMask(connections.gte(8));
+  var DEM = ee.Image('WWF/HydroSHEDS/03VFDEM');
+  var slope = ee.Algorithms.Terrain(DEM).select('slope');
+  var flooded = flooded.updateMask(slope.lt(5));
+
+  // Area calculation
+  var flood_pixelarea = flooded.select('VH').multiply(ee.Image.pixelArea());
+  var flood_stats = flood_pixelarea.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: aoi,
+    scale: 10,
+    maxPixels: 1e9
+  });
+  var flood_area_ha = flood_stats.getNumber('VH').divide(10000).round();
+
+  // Visualization
+  var results = ui.Panel({
+    style: {position: 'bottom-left', padding: '8px 15px', width: '350px'}
+  });
+  var title = ui.Label('Results', {fontSize: '18px', color: '3333ff'});
+  var text1 = ui.Label('Flood status between:', {fontWeight: 'bold'});
+  var number1 = ui.Label(after_start + ' and ' + after_end, {color: 'bf0f19', fontWeight: 'bold'});
+  var text2 = ui.Label('Estimated flood extent:', {fontWeight: 'bold'});
+  var number2 = ui.Label();
+  flood_area_ha.evaluate(function(val) {number2.setValue(val + ' hectares')});
+  results.add(ui.Panel([title, text1, number1, text2, number2]));
+  Map.add(results);
+
+  // Modified: Set both layers to not be visible
+  Map.addLayer(before_filtered, {min: -25, max: 0}, 'Before Flood', false);
+  Map.addLayer(after_filtered, {min: -25, max: 0}, 'After Flood', false);
+  Map.addLayer(flooded, {palette: ['0000FF'], opacity: 0.7}, 'Flooded areas');
+};
+
+// Check if collections are non-empty before processing
+before_count.evaluate(function(bc) {
+  after_count.evaluate(function(ac) {
+    if (bc === 0 || ac === 0) {
+      print('Error: No images found in one or both collections. Check AOI, dates, or filters.');
+    } else {
+      processImages();
+    }
+  });
+});
