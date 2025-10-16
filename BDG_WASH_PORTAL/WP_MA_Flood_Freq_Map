@@ -179,50 +179,56 @@ Export.image.toDrive({
 
 
 
-
-//////////////////FLOOD VALIDATION//////////////////
-// =========================
-// FLOOD FREQUENCY VALIDATION USING UNOSAT
-// =========================
+///////////////////// FLOOD VALIDATION /////////////////////
+// =========================================================
+// FLOOD FREQUENCY VALIDATION USING UNOSAT (Shapefile Input)
+// =========================================================
 
 // ==== INPUTS ====
 
-// Your flood frequency raster (from your GEE processing)
-var freq = frequency//ee.Image('users/yourusername/flood_frequency_2014_2025');
+// Flood frequency raster (from your Sentinel-1 flood frequency workflow)
+var freq = frequency; // Already computed earlier
 
-// UNOSAT flood extent raster (from UNOSAT Flood Portal)
-var unosat = ee.Image('users/yourusername/unosat_flood_extent');
+// AOI
+var aoi = Madina_Adentan;
 
-// Your study area
-var aoi = ee.FeatureCollection('users/yourusername/aoi');
+// UNOSAT flood extent shapefile (vector)
+var unosat = ee.FeatureCollection("projects/mabeltsadia/assets/S1_20231023_FloodExtent_GreaterAccra_VoltaRegion");
 
 // Match projection and scale
 var scale = 30;
 var projection = freq.projection();
 
-// ==== PREPROCESSING ====
-
-var freqNamed = freq.rename('flood_freq');
-var unosatRaster = unosat
-  .select(0)
-  .gt(0) // convert to binary flood mask (1=flooded, 0=not)
+// ==== STEP 1: Convert UNOSAT shapefile to binary raster ====
+// Paint the polygons into a binary image (1 = flooded, 0 = not flooded)
+var unosatRaster = ee.Image(0).byte()
+  .paint({
+    featureCollection: unosat,
+    color: 1
+  })
   .rename('unosat_flood')
-  .resample('bilinear')
-  .reproject({crs: projection, scale: scale});
+  .reproject({crs: projection, scale: scale})
+  .clip(aoi);
 
-// Optional: visualize on map
+// ==== STEP 2: Preprocess model flood raster ====
+var freqNamed = freq.rename('flood_freq');
+
+// Threshold flood frequency (e.g., >20% = flood-prone)
+var threshold = 20;
+var freqBinary = freqNamed.gt(threshold).rename('model_flood');
+
+// ==== STEP 3: Visualization ====
 Map.centerObject(aoi);
 Map.addLayer(freqNamed, {min: 0, max: 100, palette: ['white', 'blue']}, 'Modelled Flood Frequency');
 Map.addLayer(unosatRaster, {min: 0, max: 1, palette: ['grey', 'red']}, 'UNOSAT Flood');
+Map.addLayer(freqBinary, {min: 0, max: 1, palette: ['lightgrey', 'darkblue']}, 'Model Binary Flood (>20%)');
 
-// ==== VALIDATION ====
+// ==== STEP 4: Confusion Matrix Validation ====
 
-var threshold = 20; // Adjust threshold (e.g. 10–30%) for what counts as “flood-prone”
-var freqBinary = freqNamed.gt(threshold).rename('model_flood');
-
+// Combine model and reference bands
 var validationImage = freqBinary.addBands(unosatRaster);
 
-// Sample 5000 random points for validation
+// Sample random points for validation
 var samplePoints = validationImage.sample({
   region: aoi,
   scale: scale,
@@ -231,16 +237,19 @@ var samplePoints = validationImage.sample({
   geometries: false
 });
 
-// Confusion matrix
+// Compute confusion matrix (reference first, then predicted)
 var confusionMatrix = samplePoints.errorMatrix('unosat_flood', 'model_flood');
+
+// Print validation metrics
 print('Confusion Matrix:', confusionMatrix);
 print('Overall Accuracy:', confusionMatrix.accuracy());
-print('Precision:', confusionMatrix.precision());
-print('Recall:', confusionMatrix.recall());
-print('F1 Score:', confusionMatrix.fscore());
+print('Producer\'s Accuracy (by class):', confusionMatrix.producersAccuracy());
+print('User\'s Accuracy (by class):', confusionMatrix.consumersAccuracy());
+print('Kappa:', confusionMatrix.kappa());
 
-// ==== CORRELATION ANALYSIS ====
+// ==== STEP 5: Correlation Analysis ====
 
+// Sample continuous flood frequency vs UNOSAT binary flood
 var correlationSamples = freqNamed.addBands(unosatRaster).sample({
   region: aoi,
   scale: scale,
@@ -257,10 +266,11 @@ var corrReducer = correlationSamples.reduceColumns({
 
 var corr = ee.Number(corrReducer.get('correlation'));
 var r2 = corr.multiply(corr);
+
 print('Pearson correlation (r):', corr);
 print('Coefficient of determination (R²):', r2);
 
-// Scatter plot
+// ==== STEP 6: Correlation Scatter Plot ====
 var scatter = ui.Chart.feature.byFeature(correlationSamples, 'unosat_flood', ['flood_freq'])
   .setChartType('ScatterChart')
   .setOptions({
@@ -272,21 +282,25 @@ var scatter = ui.Chart.feature.byFeature(correlationSamples, 'unosat_flood', ['f
   });
 print(scatter);
 
-// Boxplot (distribution)
+// ==== STEP 7: Boxplot of Flood Frequency per UNOSAT Class ====
 var boxChart = ui.Chart.feature.groups({
   features: correlationSamples,
   xProperty: 'unosat_flood',
   yProperty: 'flood_freq'
-}).setChartType('BoxChart')
-  .setOptions({
-    title: 'Distribution of Flood Frequency by UNOSAT Flood Class',
-    hAxis: {title: 'UNOSAT Flood Class (0 = No Flood, 1 = Flood)'},
-    vAxis: {title: 'Modelled Flood Frequency (%)'},
-    legend: {position: 'none'}
-  });
+})
+.setChartType('BoxChart')
+.setOptions({
+  title: 'Distribution of Modelled Flood Frequency by UNOSAT Class',
+  hAxis: {title: 'UNOSAT Flood Class (0 = No Flood, 1 = Flood)'},
+  vAxis: {title: 'Modelled Flood Frequency (%)'},
+  legend: {position: 'none'}
+});
 print(boxChart);
 
-
-
-
-
+// ==== STEP 8: Export optional validation points ====
+Export.table.toDrive({
+  collection: samplePoints,
+  description: 'Flood_Validation_Samples',
+  folder: 'GEE_Exports',
+  fileFormat: 'CSV'
+});
