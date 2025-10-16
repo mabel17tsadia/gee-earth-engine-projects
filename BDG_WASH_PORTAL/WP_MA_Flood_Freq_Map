@@ -283,19 +283,24 @@ var scatter = ui.Chart.feature.byFeature(correlationSamples, 'unosat_flood', ['f
 print(scatter);
 
 // ==== STEP 7: Boxplot of Flood Frequency per UNOSAT Class ====
+
+// We group flood frequency values (y) by UNOSAT flood class (x)
 var boxChart = ui.Chart.feature.groups({
   features: correlationSamples,
   xProperty: 'unosat_flood',
-  yProperty: 'flood_freq'
+  yProperty: 'flood_freq',
+  seriesProperty: 'unosat_flood' // required argument
 })
 .setChartType('BoxChart')
 .setOptions({
-  title: 'Distribution of Modelled Flood Frequency by UNOSAT Class',
+  title: 'Distribution of Modelled Flood Frequency by UNOSAT Flood Class',
   hAxis: {title: 'UNOSAT Flood Class (0 = No Flood, 1 = Flood)'},
   vAxis: {title: 'Modelled Flood Frequency (%)'},
-  legend: {position: 'none'}
+  legend: {position: 'none'},
+  colors: ['#0571B0']
 });
 print(boxChart);
+
 
 // ==== STEP 8: Export optional validation points ====
 Export.table.toDrive({
