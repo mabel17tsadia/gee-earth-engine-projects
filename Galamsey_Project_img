@@ -171,6 +171,7 @@ inspectCollection(s2, 'Sentinel-2');
 // -------------------------------------------------------
 // PHASE 2: HARMONIZATION — Landsat & Sentinel-2
 // -------------------------------------------------------
+print('IMAGE HARMONIZING BEGINS');
 
 // STEP 1: Print counts to verify which sensors have data
 print('Landsat 5 clean count:', l5_clean.size());
