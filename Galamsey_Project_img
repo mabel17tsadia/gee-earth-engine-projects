@@ -16,6 +16,10 @@ print('STEP 1 STARTED: AOI loaded');
 
 // -------------------------------------------------------
 // 2. LOAD LANDSAT COLLECTIONS (2010–2025)
+var landsat5 = ee.ImageCollection("LANDSAT/LT05/C02/T1_L2") 
+  .filterBounds(Prestea)
+  .filterDate('2010-01-01', '2012-12-31');
+  
 var landsat7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
   .filterBounds(Prestea)
   .filterDate('2010-01-01', '2025-12-31');
@@ -31,6 +35,7 @@ var landsat9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
 print('Landsat 9 images (raw):', landsat9.size());  
 print('Landsat 8 images (raw):', landsat8.size());
 print('Landsat 7 images (raw):', landsat7.size());
+print('Landsat 5 images (raw):', landsat5.size());
 
 
 // -------------------------------------------------------
@@ -84,11 +89,13 @@ print('Cloud & shadow masking function ready');
 var l9_clean = landsat9.map(applyScaleFactors).map(maskLandsat);
 var l8_clean = landsat8.map(applyScaleFactors).map(maskLandsat);
 var l7_clean = landsat7.map(applyScaleFactors).map(maskLandsat);
+var l5_clean = landsat5.map(applyScaleFactors).map(maskLandsat);
 
 print('STEP 1 COMPLETE: Atmospheric correction + masking applied');
 print('L9 clean:', l9_clean.size());
 print('L8 clean:', l8_clean.size());
 print('L7 clean:', l7_clean.size());
+print('L5 clean:', l5_clean.size());
 
 // -------------------------------------------------------
 // 6. SENTINEL-2: ALREADY L2A (BOA) → JUST MASK
@@ -148,7 +155,7 @@ print('SENTINEL-2 COMPOSITE: FULL AOI COVERAGE ACHIEVED');
 // -------------------------------------------------------
 // PRINT BAND NAMES ONLY
 // -------------------------------------------------------
-print('BAND NAMES ONLY');
+print('EXTRA STEP: PRINT BAND NAMES ONLY');
 
 function printBandNames(col, name) {
   var count = col.size();
@@ -166,6 +173,7 @@ function printBandNames(col, name) {
 }
 
 // Run for each collection
+printBandNames(l5_clean, 'Landsat 5');
 printBandNames(l7_clean, 'Landsat 7');
 printBandNames(l8_clean, 'Landsat 8');
 printBandNames(l9_clean, 'Landsat 9');
@@ -186,6 +194,7 @@ var badL7 = [
   'LE07_193056_20220909'  // known corrupt image
 ];
 var l7_clean_fixed = l7_clean.filter(ee.Filter.inList('system:index', badL7).not());
+var l5_clean_fixed = l5_clean.filter(ee.Filter.inList('system:index', badL7).not());
 
 // -------------------------------------------------------
 // Safe rename helper
@@ -198,6 +207,12 @@ function safeRename(image, oldBands, newBands) {
 
 // -------------------------------------------------------
 // Rename functions
+function renameL5(image) {
+  return safeRename(image,
+    ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'],
+    ['B1','B2','B3','B4','B5','B7']);
+}
+
 function renameL7(image) {
   return safeRename(image,
     ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'],
@@ -232,6 +247,7 @@ function forceFloat(col) {
   return col.map(function(img) { return img.toFloat(); });
 }
 
+var l5_h = forceFloat(renameAndClean(l5_clean_fixed, renameL5));
 var l7_h = forceFloat(renameAndClean(l7_clean_fixed, renameL7));
 var l8_h = forceFloat(renameAndClean(l8_clean, renameL8));
 var l9_h = forceFloat(renameAndClean(l9_clean, renameL9));
@@ -271,3 +287,22 @@ Map.addLayer(
 );
 
 print('HARMONIZATION COMPLETE');
+
+////////////////TESTING THE HARMONIZED COMPOSITE BY YEAR//////////
+print("TESTING THE HARMONIZED COMPOSITE BY YEAR")
+// Filter harmonized collection to 2010
+var year2010 = all_harmonized.filterDate('2010-01-01', '2010-12-31');
+
+// Print count and sample images
+print('Harmonized images from 2010:', year2010.size());
+print('Sample 2010 image:', year2010.first());
+print('Band names (2010):', ee.Image(year2010.first()).bandNames());
+
+var comp2010 = year2010.median().clip(Prestea);
+
+Map.addLayer(
+  comp2010,
+  {bands:['B3','B2','B1'], min:0, max:0.3, gamma:1.3},
+  'Harmonized 2010 Composite'
+);
+
