@@ -48,29 +48,34 @@ print('Atmospheric correction function ready');
 // 4. CLOUD & SHADOW MASKING (QA_PIXEL + TDOM)
 function maskLandsat(image) {
   var qa = image.select('QA_PIXEL');
-  
+
   // Bitmask: Clear if bit is 0
-  var cloud = qa.bitwiseAnd(1 << 3).eq(0);      // Cloud
-  var shadow = qa.bitwiseAnd(1 << 4).eq(0);     // Cloud shadow
-  var snow = qa.bitwiseAnd(1 << 5).eq(0);       // Snow
-  var dilated = qa.bitwiseAnd(1 << 1).eq(0);    // Dilated cloud
-  
+  var cloud = qa.bitwiseAnd(1 << 3).eq(0);
+  var shadow = qa.bitwiseAnd(1 << 4).eq(0);
+  var snow = qa.bitwiseAnd(1 << 5).eq(0);
+  var dilated = qa.bitwiseAnd(1 << 1).eq(0);
+
   var mask = cloud.and(shadow).and(snow).and(dilated);
-  
-  // TDOM: Detect dark outliers in NIR + SWIR2
+
+  // TDOM: Dark object masking with safe fallback
   var irSum = image.select(['SR_B5', 'SR_B7']).reduce(ee.Reducer.sum());
-  var tdomThreshold = irSum.reduceRegion({
+  var stats = irSum.reduceRegion({
     reducer: ee.Reducer.percentile([15]),
     geometry: Prestea,
     scale: 30,
     maxPixels: 1e9
-  }).get('sum');
-  
-  var tdomMask = irSum.lt(ee.Number(tdomThreshold));
-  
+  });
+
+  // stats.get('sum') may be null -> use ee.Algorithms.If to provide fallback
+  var raw = stats.get('sum');
+  var tdomThreshold = ee.Number(ee.Algorithms.If(raw, raw, 0.15));
+  var tdomMask = irSum.lt(tdomThreshold);
+
   return image.updateMask(mask.and(tdomMask))
               .copyProperties(image, ['system:time_start']);
 }
+
+
 
 print('Cloud & shadow masking function ready');
 
@@ -161,10 +166,10 @@ function printBandNames(col, name) {
 }
 
 // Run for each collection
-printBandNames(landsat7, 'Landsat 7');
-printBandNames(landsat8, 'Landsat 8');
-printBandNames(landsat9, 'Landsat 9');
-printBandNames(s2, 'Sentinel-2');
+printBandNames(l7_clean, 'Landsat 7');
+printBandNames(l8_clean, 'Landsat 8');
+printBandNames(l9_clean, 'Landsat 9');
+printBandNames(s2_clean, 'Sentinel-2');
 
 
 
@@ -173,17 +178,17 @@ printBandNames(s2, 'Sentinel-2');
 // PHASE 2: HARMONIZATION — Landsat (7,8,9) & Sentinel-2
 // ========================================================
 
-print('🟡 IMAGE HARMONIZATION BEGINS');
+print('IMAGE HARMONIZATION BEGINS');
 
 // -------------------------------------------------------
-// 0️⃣  REMOVE CORRUPT OR INCOMPLETE LANDSAT-7 SCENES
+//  REMOVE CORRUPT OR INCOMPLETE LANDSAT-7 SCENES
 var badL7 = [
   'LE07_193056_20220909'  // known corrupt image
 ];
 var l7_clean_fixed = l7_clean.filter(ee.Filter.inList('system:index', badL7).not());
 
 // -------------------------------------------------------
-// 1️⃣ Safe rename helper
+// Safe rename helper
 function safeRename(image, oldBands, newBands) {
   var bands = image.bandNames();
   var hasAll = ee.List(oldBands).map(function(b){ return bands.contains(b); });
@@ -192,7 +197,7 @@ function safeRename(image, oldBands, newBands) {
 }
 
 // -------------------------------------------------------
-// 2️⃣ Rename functions
+// Rename functions
 function renameL7(image) {
   return safeRename(image,
     ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'],
@@ -215,7 +220,7 @@ function renameS2(image) {
 }
 
 // -------------------------------------------------------
-// 3️⃣ Apply renaming safely
+// Apply renaming safely
 function renameAndClean(col, fn) {
   return col.map(function(img) {
     var renamed = fn(img);
@@ -223,24 +228,40 @@ function renameAndClean(col, fn) {
   }).filter(ee.Filter.listContains('system:band_names','B1'));
 }
 
-var l7_h = renameAndClean(l7_clean_fixed, renameL7);
-var l8_h = renameAndClean(l8_clean, renameL8);
-var l9_h = renameAndClean(l9_clean, renameL9);
-var s2_h = renameAndClean(s2_clean, renameS2);
+function forceFloat(col) {
+  return col.map(function(img) { return img.toFloat(); });
+}
+
+var l7_h = forceFloat(renameAndClean(l7_clean_fixed, renameL7));
+var l8_h = forceFloat(renameAndClean(l8_clean, renameL8));
+var l9_h = forceFloat(renameAndClean(l9_clean, renameL9));
+var s2_h = forceFloat(renameAndClean(s2_clean, renameS2));
 
 // -------------------------------------------------------
-// 4️⃣ Resample Sentinel-2 to 30 m
+// -------------------------------------------------------
+// Resample & scale Sentinel-2 to 30 m and float type
 s2_h = s2_h.map(function(img){
-  return img.resample('bilinear')
-            .reproject({crs: ee.Image(l8_clean.first()).projection(), scale: 30});
+  return img
+    .divide(10000) // convert reflectance from 0–10000 to 0–1
+    .toFloat()
+    .resample('bilinear')
+    .reproject({
+      crs: ee.Image(l8_clean.first()).projection(),
+      scale: 30
+    });
 });
 
+
+print('L7 type check:', ee.Image(l7_h.first()).bandTypes());
+print('S2 type check:', ee.Image(s2_h.first()).bandTypes());
+
+
 // -------------------------------------------------------
-// 5️⃣ Merge all harmonized collections
+// Merge all harmonized collections
 var all_harmonized = l7_h.merge(l8_h).merge(l9_h).merge(s2_h);
 
 // -------------------------------------------------------
-print('✅ Harmonized collection ready. Image count:', all_harmonized.size());
+print('Harmonized collection ready. Image count:', all_harmonized.size());
 print('Sample band names (first valid image):', ee.Image(all_harmonized.first()).bandNames());
 
 Map.addLayer(
@@ -249,4 +270,4 @@ Map.addLayer(
   'Harmonized Composite (Preview)'
 );
 
-print('🟢 HARMONIZATION COMPLETE');
+print('HARMONIZATION COMPLETE');
