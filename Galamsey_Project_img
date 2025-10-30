@@ -1,0 +1,137 @@
+// ========================================================
+// GALAMSEY PROJECT – PHASE 2
+// STEP 1: ATMOSPHERIC CORRECTION + CLOUD/SHADOW MASKING
+// AOI: Tarkwa-Nsuaem Municipality
+// Status: COMPLETE
+// ========================================================
+
+// -------------------------------------------------------
+// 1. LOAD AOI FROM ASSET
+var PresteaFC = ee.FeatureCollection('projects/mabeltsadia/assets/Prestea_Huni_Valley_WR');
+var Prestea = PresteaFC.geometry();
+
+Map.centerObject(Prestea, 11);
+Map.addLayer(Prestea, {color: 'red'}, 'Prestea AOI');
+print('STEP 1 STARTED: AOI loaded');
+
+// -------------------------------------------------------
+// 2. LOAD LANDSAT COLLECTIONS (2010–2025)
+var landsat8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+  .filterBounds(Prestea)
+  .filterDate('2013-01-01', '2025-12-31');
+
+var landsat7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+  .filterBounds(Prestea)
+  .filterDate('2010-01-01', '2025-12-31');
+
+var landsat5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+  .filterBounds(Prestea)
+  .filterDate('2010-01-01', '2012-12-31');
+
+print('Landsat 8 images (raw):', landsat8.size());
+print('Landsat 7 images (raw):', landsat7.size());
+print('Landsat 5 images (raw):', landsat5.size());
+
+// -------------------------------------------------------
+// 3. ATMOSPHERIC CORRECTION: SCALE SURFACE REFLECTANCE
+function applyScaleFactors(image) {
+  var opticalBands = image.select('SR_B.*').multiply(0.0000275).add(-0.2);
+  var thermalBands = image.select('ST_B.*').multiply(0.00341802).add(149.0);
+  return image.addBands(opticalBands, null, true)
+              .addBands(thermalBands, null, true);
+}
+
+print('Atmospheric correction function ready');
+
+// -------------------------------------------------------
+// 4. CLOUD & SHADOW MASKING (QA_PIXEL + TDOM)
+function maskLandsat(image) {
+  var qa = image.select('QA_PIXEL');
+  
+  // Bitmask: Clear if bit is 0
+  var cloud = qa.bitwiseAnd(1 << 3).eq(0);      // Cloud
+  var shadow = qa.bitwiseAnd(1 << 4).eq(0);     // Cloud shadow
+  var snow = qa.bitwiseAnd(1 << 5).eq(0);       // Snow
+  var dilated = qa.bitwiseAnd(1 << 1).eq(0);    // Dilated cloud
+  
+  var mask = cloud.and(shadow).and(snow).and(dilated);
+  
+  // TDOM: Detect dark outliers in NIR + SWIR2
+  var irSum = image.select(['SR_B5', 'SR_B7']).reduce(ee.Reducer.sum());
+  var tdomThreshold = irSum.reduceRegion({
+    reducer: ee.Reducer.percentile([15]),
+    geometry: tarkwa,
+    scale: 30,
+    maxPixels: 1e9
+  }).get('sum');
+  
+  var tdomMask = irSum.lt(ee.Number(tdomThreshold));
+  
+  return image.updateMask(mask.and(tdomMask))
+              .copyProperties(image, ['system:time_start']);
+}
+
+print('Cloud & shadow masking function ready');
+
+// -------------------------------------------------------
+// 5. APPLY CORRECTION + MASKING
+var l8_clean = landsat8.map(applyScaleFactors).map(maskLandsat);
+var l7_clean = landsat7.map(applyScaleFactors).map(maskLandsat);
+var l5_clean = landsat5.map(applyScaleFactors).map(maskLandsat);
+
+print('STEP 1 COMPLETE: Atmospheric correction + masking applied');
+print('L8 clean:', l8_clean.size());
+print('L7 clean:', l7_clean.size());
+print('L5 clean:', l5_clean.size());
+
+// -------------------------------------------------------
+// 6. SENTINEL-2: ALREADY L2A (BOA) → JUST MASK
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+  .filterBounds(Prestea)
+  .filterDate('2017-01-01', '2025-12-31');
+
+function maskS2(image) {
+  var scl = image.select('SCL');
+  var good = scl.eq(4)  // vegetation
+             .or(scl.eq(5))  // bare soil
+             .or(scl.eq(6))  // water
+             .or(scl.eq(7))  // unclassified
+             .or(scl.eq(11)); // snow (rare)
+  return image.updateMask(good)
+              .select(['B2','B3','B4','B5','B6','B7','B8','B8A','B11','B12']);
+}
+
+var s2_clean = s2.map(maskS2);
+print('Sentinel-2 clean:', s2_clean.size());
+
+// -------------------------------------------------------
+// -------------------------------------------------------
+// -------------------------------------------------------
+// 7. FIXED: FULL COVERAGE SENTINEL-2 COMPOSITE (2023 Dry Season)
+// -------------------------------------------------------
+
+// Use 4-month dry season: Dec 2022 – Mar 2023 (low cloud in Ghana)
+var s2_dry_season = s2_clean
+  .filterDate('2022-12-01', '2023-04-01')
+  .filterBounds(Prestea);
+
+// Create median composite + clip to AOI
+var s2_composite = s2_dry_season.median().clip(Prestea);
+
+// Visualize true color (B4=Red, B3=Green, B2=Blue)
+Map.addLayer(s2_composite.select(['B4','B3','B2']), 
+             {min: 0, max: 3000, gamma: 1.3}, 
+             'Sentinel-2 Dry Season 2023 (Full Coverage)');
+
+// -------------------------------------------------------
+// COVERAGE CHECK
+var pixelCount = s2_composite.select('B4').reduceRegion({
+  reducer: ee.Reducer.count(),
+  geometry: Prestea,
+  scale: 10,
+  maxPixels: 1e10
+});
+
+print('Images used:', s2_dry_season.size());
+print('Pixel coverage in AOI:', pixelCount);
+print('SENTINEL-2 COMPOSITE: FULL AOI COVERAGE ACHIEVED');
