@@ -1,22 +1,25 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_WR");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
 // ========================================================
 // GALAMSEY PROJECT
 // AOI: THE SAID Municipality
 // Status: COMPLETE
 // ========================================================
 
--------------------------------------------------------
+//-------------------------------------------------------
 // 1. LOAD AOI FROM ASSET
-var PresteaFC = ee.FeatureCollection('projects/mabeltsadia/assets/Prestea_Huni_Valley_WR');
-var aoi = PresteaFC.geometry();
 
-Map.centerObject(aoi, 11);
-Map.addLayer(aoi, {color: 'red'}, ' AOI');
-print('STEP 1 STARTED: AOI loaded');
+Map.centerObject(aoi)
+Map.addLayer(aoi.style({color: 'yellow', width: 2, fillColor: '00000000'
+}), {}, 'AOI Outline');
+
 
 // ---------------------------
 // USER PARAMETERS
 // ---------------------------
-var folderName = 'BDG_Galamsey_Project';      // Drive folder
+//var aoi = western;               // your study area geometry
+var folderName = 'Galamsey_Project_BDG';      // Drive folder
 var startYear = 2010;
 var endYear   = 2025;
 
@@ -57,7 +60,7 @@ var end = ee.Date.fromYMD(year + 1, 12, 31);
   // Filter, mask clouds, and make median composite
   var l8_filtered = l8.filterBounds(aoi)
                       .filterDate(start, end)
-                      //.filter(ee.Filter.lt('CLOUD_COVER', 10))
+                       //.filter(ee.Filter.lt('CLOUD_COVER', 10))
                       .map(maskL8sr);
 
   // var composite = l8_filtered.median().clip(aoi);
@@ -93,5 +96,111 @@ var filled = composite.focal_mean({
     crs: 'EPSG:32630',         // UTM Zone 30N (fits Western Ghana)
     maxPixels: 1e13
   });
+ }
+
+
+
+// ---------------------------
+// SPECTRAL INDICES FUNCTIONS
+// ---------------------------
+function addIndices(image) {
+  // NDVI = (NIR - RED)/(NIR + RED)
+  var ndvi = image.normalizedDifference(['B5', 'B4']).rename('NDVI');
+
+  // EVI = 2.5 * (NIR - RED)/(NIR + 6*RED - 7.5*BLUE + 1)
+  var evi = image.expression(
+    '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
+      'NIR': image.select('B5'),
+      'RED': image.select('B4'),
+      'BLUE': image.select('B2')
+    }).rename('EVI');
+
+  // NDWI = (GREEN - NIR)/(GREEN + NIR)
+  var ndwi = image.normalizedDifference(['B3','B5']).rename('NDWI');
+
+  // MNDWI = (GREEN - SWIR1)/(GREEN + SWIR1)
+  var mndwi = image.normalizedDifference(['B3','B6']).rename('MNDWI');
+
+  // NDBI = (SWIR1 - NIR)/(SWIR1 + NIR)
+  var ndbi = image.normalizedDifference(['B6','B5']).rename('NDBI');
+
+  // NBR = (NIR - SWIR2)/(NIR + SWIR2)
+  var nbr = image.normalizedDifference(['B5','B7']).rename('NBR');
+
+  // BSI = ((SWIR1 + RED) - (NIR + BLUE))/((SWIR1 + RED) + (NIR + BLUE))
+  var bsi = image.expression(
+    '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
+      'SWIR1': image.select('B6'),
+      'RED': image.select('B4'),
+      'NIR': image.select('B5'),
+      'BLUE': image.select('B2')
+    }).rename('BSI');
+
+  // IOI = RED / BLUE
+  var ioi = image.select('B4').divide(image.select('B2')).rename('IOI');
+
+  // CMR = SWIR1 / SWIR2
+  var cmr = image.select('B6').divide(image.select('B7')).rename('CMR');
+
+  // GPI = ((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)
+  var gpi = image.expression(
+    '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
+      'RED': image.select('B4'),
+      'BLUE': image.select('B2'),
+      'SWIR1': image.select('B6'),
+      'SWIR2': image.select('B7'),
+      'GREEN': image.select('B3'),
+      'NIR': image.select('B5')
+    }).rename('GPI');
+
+  // Binary mask for GPI > 1
+  var gold_hotspots = gpi.gt(1).rename('Gold_Hotspots');
+
+  return image.addBands([ndvi,evi,ndwi,mndwi,ndbi,nbr,bsi,ioi,cmr,gpi,gold_hotspots]);
 }
+
+
+for (var year = startYear; year <= endYear; year++) {
+
+  var start = ee.Date.fromYMD(year-1,1,1);
+  var end   = ee.Date.fromYMD(year+1,12,31);
+
+  var l8_filtered = l8.filterBounds(aoi)
+                      .filterDate(start, end)
+                      .map(maskL8sr);
+
+  print('Year ' + year + ' image count:', l8_filtered.size());
+  if (l8_filtered.size().getInfo() === 0) continue;
+
+  // Composite
+  var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+  var filled = composite.focal_mean({radius:90, units:'meters', kernelType:'circle'}).blend(composite);
+
+  // Add spectral indices
+  var composite_with_indices = addIndices(filled);
+
+  // Display NDVI as example
+  Map.addLayer(composite_with_indices.select('NDVI'), {min:0, max:1, palette:['red','yellow','green']}, year + ' NDVI');
+
+  // Export the composite with indices
+  Export.image.toDrive({
+    image: composite_with_indices,
+    description: 'L8_' + year + '_Composite_Indices',
+    folder: folderName,
+    fileNamePrefix: 'L8_' + year + '_Composite_Indices',
+    region: aoi,
+    scale: 30,
+    crs: 'EPSG:32630',
+    maxPixels: 1e13
+  });
+}
+
+
+
+
+
+
+
+
+
 
