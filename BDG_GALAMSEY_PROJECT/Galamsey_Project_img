@@ -289,129 +289,155 @@ Map.addLayer(
 print('HARMONIZATION COMPLETE');
 
 
+// ///////////////////COMPOSITES///////////////////
+// // ========================================================
+// // PHASE 3: VISUALIZE HARMONIZED IMAGES BY YEAR (All Sensors)
+// // ========================================================
 
-//////////////////GENERATE SPECTRAL INDICES///////////////////
+// // ---------------------------
+// // USER PARAMETERS
+// // ---------------------------
+// var targetYear = 2020;     // 👈 choose the year you want to visualize
 
-// ===================== PARAMETERS =====================
-var startYear = 2010;
-var endYear = 2025;
-var bufferYears = 2;
-var scale = 90;
+// var vis = {bands:['B4','B3','B2'], min:0, max:0.3, gamma:1.2};
 
-// ===================== ADD INDICES =====================
-function addSpectralIndices(img) {
-  var ndvi = img.expression('(B4 - B3) / (B4 + B3)', {
-    B4: img.select('B4'), B3: img.select('B3')
-  }).rename('NDVI');
+// // ---------------------------
+// // BUILD YEAR FILTER
+// // ---------------------------
+// var start = ee.Date.fromYMD(targetYear, 1, 1);
+// var end   = ee.Date.fromYMD(targetYear, 12, 31);
 
-  var evi = img.expression('(2.5 * (B4 - B3)) / (B4 + 6*B3 - 7.5*B1 + 1)', {
-    B4: img.select('B4'), B3: img.select('B3'), B1: img.select('B1')
-  }).rename('EVI');
+// // ---------------------------
+// // FILTER HARMONIZED COLLECTION
+// // ---------------------------
+// var yearCollection = all_harmonized
+//   .filterDate(start, end)
+//   .filterBounds(aoi)
+//   .map(function(img){ return img.clip(aoi); });
 
-  var ndwi = img.expression('(B2 - B4) / (B2 + B4)', {
-    B2: img.select('B2'), B4: img.select('B4')
-  }).rename('NDWI');
+// print('✅ Harmonized Images for ' + targetYear + ':', yearCollection);
+// print('Number of images:', yearCollection.size());
 
-  var mndwi = img.expression('(B2 - B5) / (B2 + B5)', {
-    B2: img.select('B2'), B5: img.select('B5')
-  }).rename('MNDWI');
+// // ---------------------------
+// // COMPOSITE FOR THAT YEAR
+// // ---------------------------
+// // Use median to combine all images from all sensors
+// var yearComposite = yearCollection.median();
 
-  var ndbi = img.expression('(B5 - B4) / (B5 + B4)', {
-    B5: img.select('B5'), B4: img.select('B4')
-  }).rename('NDBI');
+// // Add to map
+// Map.centerObject(aoi, 8);
+// Map.addLayer(yearComposite, vis, targetYear + ' All-Sensor Composite');
 
-  var nbr = img.expression('(B4 - B7) / (B4 + B7)', {
-    B4: img.select('B4'), B7: img.select('B7')
-  }).rename('NBR');
+// // Optional: show a few random individual scenes
+// var few = yearCollection.limit(5);
+// Map.addLayer(few.mosaic(), vis, targetYear + ' Sample Scenes (Mosaic)');
 
-  var bsi = img.expression('((B5 + B3) - (B4 + B1)) / ((B5 + B3) + (B4 + B1))', {
-    B5: img.select('B5'), B3: img.select('B3'),
-    B4: img.select('B4'), B1: img.select('B1')
-  }).rename('BSI');
+// print('HARMONIZED YEARLY VIEW COMPLETE ✅');
 
-  var ioi = img.expression('(B3 - B1) / (B3 + B1)', {
-    B3: img.select('B3'), B1: img.select('B1')
-  }).rename('IOI');
 
-  var cmr = img.expression('(B4 - B2) / (B4 + B2)', {
-    B4: img.select('B4'), B2: img.select('B2')
-  }).rename('CMR');
 
-  var gpi = img.expression('(B5 - B2) / (B5 + B2)', {
-    B5: img.select('B5'), B2: img.select('B2')
-  }).rename('GPI');
 
-  var lst_proxy = img.expression('B5 / B4', {
-    B5: img.select('B5'), B4: img.select('B4')
-  }).rename('LST');
 
-  return img.addBands([
-    ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi, lst_proxy
-  ]);
-}
 
-// ===========================================
-// 🗓️ FUNCTION: MAKE BUFFERED YEAR COMPOSITE
-// ===========================================
-function makeYearlyComposite(year) {
-  year = ee.Number(year);
 
-  var start = ee.Date.fromYMD(year.subtract(bufferYears), 1, 1);
-  var end = ee.Date.fromYMD(year.add(bufferYears), 12, 31);
+// //////////////////GENERATE SPECTRAL INDICES///////////////////
 
-  var col = all_harmonized
-    .filterDate(start, end)
-    .map(addSpectralIndices)
-    .select(['NDVI', 'EVI', 'NDWI', 'MNDWI', 'NDBI',
-             'NBR', 'BSI', 'IOI', 'CMR', 'GPI', 'LST']);
+// // ===================== PARAMETERS =====================
+// var targetYear = 2010;   // pick your year
+// var bufferYears = 2;     // ± years buffer
+// var computeScale = 120;  // coarse scale (reduces memory)
 
-  var count = col.size();
+// // ===================== ADD INDICES =====================
+// function addSpectralIndices(img) {
+//   var ndvi = img.expression('(B4 - B3) / (B4 + B3)', {
+//     B4: img.select('B4'), B3: img.select('B3')
+//   }).rename('NDVI');
 
-  // Use ee.String for server-side printing
-  print(ee.String('🧩 Year: ').cat(year.format()).cat(' | Count: ').cat(count.format()));
+//   var evi = img.expression('(2.5 * (B4 - B3)) / (B4 + 6*B3 - 7.5*B1 + 1)', {
+//     B4: img.select('B4'), B3: img.select('B3'), B1: img.select('B1')
+//   }).rename('EVI');
 
-  var img = ee.Image(
-    ee.Algorithms.If(
-      count.gt(0),
-      col.median().clip(aoi),
-      ee.Image.constant(0).clip(aoi)
-    )
-  ).set({
-    'year': year,
-    'buffer_years': bufferYears,
-    'image_count': count
-  });
+//   var ndwi = img.expression('(B2 - B4) / (B2 + B4)', {
+//     B2: img.select('B2'), B4: img.select('B4')
+//   }).rename('NDWI');
 
-  return img;
-}
+//   var mndwi = img.expression('(B2 - B5) / (B2 + B5)', {
+//     B2: img.select('B2'), B5: img.select('B5')
+//   }).rename('MNDWI');
 
-// ===========================================
-// 🌀 GENERATE COLLECTION FOR RANGE OF YEARS
-// ===========================================
-var years = ee.List.sequence(startYear, endYear);
-var yearlyComposites = ee.ImageCollection(years.map(makeYearlyComposite));
-print('✅ Buffered Yearly Composites:', yearlyComposites.limit(5));
+//   var ndbi = img.expression('(B5 - B4) / (B5 + B4)', {
+//     B5: img.select('B5'), B4: img.select('B4')
+//   }).rename('NDBI');
 
-// ===========================================
-// 🔍 PREVIEW BASE YEARS (for quality check)
-// ===========================================
-var baseImg = yearlyComposites.filter(ee.Filter.eq('year', 2010)).first();
-print('🖼️ Base Year (2010) Image:', baseImg);
+//   var nbr = img.expression('(B4 - B7) / (B4 + B7)', {
+//     B4: img.select('B4'), B7: img.select('B7')
+//   }).rename('NBR');
 
-// ===========================================
-// 🎨 VISUALIZATION
-// ===========================================
-var visParams = {
-  NDVI: {min: -1, max: 1, palette: ['brown', 'yellow', 'green']},
-  NDBI: {min: -1, max: 1, palette: ['blue', 'white', 'red']},
-  NDWI: {min: -1, max: 1, palette: ['white', 'blue']},
-  BSI:  {min: -1, max: 1, palette: ['green', 'yellow', 'brown']}
-};
+//   var bsi = img.expression('((B5 + B3) - (B4 + B1)) / ((B5 + B3) + (B4 + B1))', {
+//     B5: img.select('B5'), B3: img.select('B3'),
+//     B4: img.select('B4'), B1: img.select('B1')
+//   }).rename('BSI');
 
-Map.addLayer(baseImg.select('NDVI'), visParams.NDVI, 'NDVI 2010');
-Map.addLayer(baseImg.select('NDBI'), visParams.NDBI, 'NDBI 2010');
-Map.addLayer(baseImg.select('NDWI'), visParams.NDWI, 'NDWI 2010');
-Map.addLayer(baseImg.select('BSI'), visParams.BSI, 'BSI 2010');
+//   var ioi = img.expression('(B3 - B1) / (B3 + B1)', {
+//     B3: img.select('B3'), B1: img.select('B1')
+//   }).rename('IOI');
 
-Map.centerObject(aoi, 11);
-print('✅ Visualization for base year 2010 added.');
+//   var cmr = img.expression('(B4 - B2) / (B4 + B2)', {
+//     B4: img.select('B4'), B2: img.select('B2')
+//   }).rename('CMR');
+
+//   var gpi = img.expression('(B5 - B2) / (B5 + B2)', {
+//     B5: img.select('B5'), B2: img.select('B2')
+//   }).rename('GPI');
+
+//   var lst_proxy = img.expression('B5 / B4', {
+//     B5: img.select('B5'), B4: img.select('B4')
+//   }).rename('LST');
+
+//   return img.addBands([
+//     ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi, lst_proxy
+//   ]);
+// }
+
+// // ===================== BUFFERED YEAR COMPOSITE =====================
+// function makeBufferedComposite(year) {
+//   year = ee.Number(year);
+//   var start = ee.Date.fromYMD(year.subtract(bufferYears), 1, 1);
+//   var end = ee.Date.fromYMD(year.add(bufferYears), 12, 31);
+
+//   var col = all_harmonized
+//     .filterDate(start, end)
+//     .map(addSpectralIndices)
+//     .select(['NDVI','EVI','NDWI','MNDWI','NDBI','NBR','BSI','IOI','CMR','GPI','LST'])
+//     .map(function(img){
+//   return img.reproject({crs: 'EPSG:4326', scale: computeScale});
+// });
+
+
+//   var count = col.size();
+//   print(ee.String('🧩 Year: ').cat(year.format()).cat(' | Image count: ').cat(count.format()));
+
+//   return ee.Image(
+//     ee.Algorithms.If(count.gt(0), col.median().clip(aoi), ee.Image.constant(0).clip(aoi))
+//   ).set('year', year);
+// }
+
+// // ===================== RUN FOR ONE YEAR (2010) =====================
+// var composite2010 = makeBufferedComposite(targetYear);
+// print('✅ Composite for ' + targetYear + ':', composite2010);
+
+// // ===================== VISUALIZATION =====================
+// var visParams = {
+//   NDVI: {min:-1, max:1, palette:['brown','yellow','green']},
+//   NDBI: {min:-1, max:1, palette:['blue','white','red']},
+//   NDWI: {min:-1, max:1, palette:['white','blue']},
+//   BSI:  {min:-1, max:1, palette:['green','yellow','brown']}
+// };
+
+// Map.addLayer(composite2010.select('NDVI'), visParams.NDVI, 'NDVI 2010', false);
+// Map.addLayer(composite2010.select('NDBI'), visParams.NDBI, 'NDBI 2010', false);
+// Map.addLayer(composite2010.select('NDWI'), visParams.NDWI, 'NDWI 2010', false);
+// Map.addLayer(composite2010.select('BSI'),  visParams.BSI,  'BSI 2010', false);
+
+// Map.centerObject(aoi, 9);
+// print('✅ Visualization for base year 2010 added.');
