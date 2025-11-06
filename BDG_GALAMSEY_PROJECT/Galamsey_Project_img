@@ -8,28 +8,28 @@
 // -------------------------------------------------------
 // 1. LOAD AOI FROM ASSET
 var PresteaFC = ee.FeatureCollection('projects/mabeltsadia/assets/Prestea_Huni_Valley_WR');
-var Prestea = PresteaFC.geometry();
+var aoi = PresteaFC.geometry();
 
-Map.centerObject(Prestea, 11);
-Map.addLayer(Prestea, {color: 'red'}, 'Prestea AOI');
+Map.centerObject(aoi, 11);
+Map.addLayer(aoi, {color: 'red'}, ' AOI');
 print('STEP 1 STARTED: AOI loaded');
 
 // -------------------------------------------------------
 // 2. LOAD LANDSAT COLLECTIONS (2010–2025)
 var landsat5 = ee.ImageCollection("LANDSAT/LT05/C02/T1_L2") 
-  .filterBounds(Prestea)
+  .filterBounds(aoi)
   .filterDate('2010-01-01', '2012-12-31');
   
 var landsat7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
-  .filterBounds(Prestea)
+  .filterBounds(aoi)
   .filterDate('2010-01-01', '2025-12-31');
   
 var landsat8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
-  .filterBounds(Prestea)
+  .filterBounds(aoi)
   .filterDate('2013-01-01', '2025-12-31');
 
 var landsat9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
-  .filterBounds(Prestea)
+  .filterBounds(aoi)
   .filterDate('2021-01-01', '2025-12-31');
 
 print('Landsat 9 images (raw):', landsat9.size());  
@@ -66,7 +66,7 @@ function maskLandsat(image) {
   var irSum = image.select(['SR_B5', 'SR_B7']).reduce(ee.Reducer.sum());
   var stats = irSum.reduceRegion({
     reducer: ee.Reducer.percentile([15]),
-    geometry: Prestea,
+    geometry: aoi,
     scale: 30,
     maxPixels: 1e9
   });
@@ -100,7 +100,7 @@ print('L5 clean:', l5_clean.size());
 // -------------------------------------------------------
 // 6. SENTINEL-2: ALREADY L2A (BOA) → JUST MASK
 var s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-  .filterBounds(Prestea)
+  .filterBounds(aoi)
   .filterDate('2017-01-01', '2025-12-31');
 
 
@@ -127,10 +127,10 @@ print('Sentinel-2 clean:', s2_clean.size());
 // Use 4-month dry season: Dec 2022 – Mar 2023 (low cloud in Ghana)
 var s2_dry_season = s2_clean
   .filterDate('2022-12-01', '2023-04-01')
-  .filterBounds(Prestea);
+  .filterBounds(aoi);
 
 // Create median composite + clip to AOI
-var s2_composite = s2_dry_season.median().clip(Prestea);
+var s2_composite = s2_dry_season.median().clip(aoi);
 
 // Visualize true color (B4=Red, B3=Green, B2=Blue)
 Map.addLayer(s2_composite.select(['B4','B3','B2']), 
@@ -141,7 +141,7 @@ Map.addLayer(s2_composite.select(['B4','B3','B2']),
 // COVERAGE CHECK
 var pixelCount = s2_composite.select('B4').reduceRegion({
   reducer: ee.Reducer.count(),
-  geometry: Prestea,
+  geometry: aoi,
   scale: 10,
   maxPixels: 1e10
 });
@@ -289,159 +289,4 @@ Map.addLayer(
 print('HARMONIZATION COMPLETE');
 
 
-
-/////MY MEMEORY GOT EXCEEDED AT THIS POINT SO LET ME JUST DO FOR ONE YEAR. SEE BELOW.
-// // ========================================================
-// // EXPORT: ROBUST HARMONIZED COMPOSITES (2010–2025)
-// // ========================================================
-
-// print(" STARTING ROBUST HARMONIZED COMPOSITE EXPORT");
-
-// // Define year range
-// var years = ee.List.sequence(2010, 2025);
-
-// // Function to safely create a yearly composite
-// function makeYearComposite(year) {
-//   year = ee.Number(year);
-//   var start = ee.Date.fromYMD(year, 1, 1);
-//   var end = start.advance(1, 'year');
-
-//   var yearlyCol = all_harmonized.filterDate(start, end);
-//   var count = yearlyCol.size();
-
-//   // Only build composite if the year has imagery
-//   var composite = ee.Algorithms.If(
-//     count.gt(0),
-//     yearlyCol.median()
-//       .clip(Prestea)
-//       .set('year', year)
-//       .set('count', count),
-//     null
-//   );
-
-//   return composite;
-// }
-
-// // Map over years and remove nulls
-// var yearlyList = years.map(makeYearComposite).removeAll([null]);
-// var yearlyComposites = ee.ImageCollection.fromImages(yearlyList);
-
-// // Summary info
-// print('Valid yearly composites created:', yearlyComposites.size());
-// print('Years with data:', yearlyComposites.aggregate_array('year'));
-// print('Image counts per year:', yearlyComposites.aggregate_array('count'));
-
-// // -------------------------------------------------------
-// // Visualization (optional)
-// // -------------------------------------------------------
-// var visParams = {bands: ['B3', 'B2', 'B1'], min: 0, max: 0.3, gamma: 1.3};
-// yearlyComposites.aggregate_array('year').getInfo().forEach(function(y) {
-//   var img = yearlyComposites.filter(ee.Filter.eq('year', y)).first();
-//   Map.addLayer(img, visParams, 'Composite ' + y);
-// });
-
-// // -------------------------------------------------------
-// // EXPORT SECTION — TO GOOGLE DRIVE
-// // -------------------------------------------------------
-// print('Starting export tasks for valid years...');
-
-// yearlyComposites.aggregate_array('year').getInfo().forEach(function(y) {
-//   var img = yearlyComposites.filter(ee.Filter.eq('year', y)).first();
-//   var name = 'Harmonized_' + y + '_Prestea';
-
-//   Export.image.toDrive({
-//     image: img,
-//     description: name,
-//     folder: 'Harmonized_Composites', // Drive folder (auto-created if missing)
-//     fileNamePrefix: name,
-//     region: Prestea,
-//     scale: 30,
-//     crs: 'EPSG:4326',
-//     maxPixels: 1e13
-//   });
-// });
-
-// print('Export tasks created! Check Tasks tab to start downloads.');
-
-
-
-
-
-
-// // -------------------------------------------------------
-// // TESTING HARMONIZED COMPOSITES BY YEAR (2010–2025)
-// // Handles missing years safely + memory-efficient
-// // -------------------------------------------------------
-
-// // Assume 'all_harmonized' is your full merged collection
-// // and 'Prestea' is your study area geometry
-
-// print("STARTING HARMONIZED YEARLY COMPOSITES TEST");
-
-// // Define range of years
-// var startYear = 2010;
-// var endYear = 2025;
-
-// // Function to create yearly composite safely
-// function createYearlyComposite(year) {
-//   var start = ee.Date.fromYMD(year, 1, 1);
-//   var end = ee.Date.fromYMD(year, 12, 31);
-
-//   var yearCol = all_harmonized.filterDate(start, end);
-
-//   // If no images found, skip gracefully
-//   var count = yearCol.size();
-//   var img = ee.Image(ee.Algorithms.If(
-//     count.gt(0),
-//     yearCol.median().set('year', year).clip(Prestea),
-//     null
-//   ));
-
-//   return img;
-// }
-
-// // Build yearly composites (only valid ones)
-// var years = ee.List.sequence(startYear, endYear);
-// var yearlyImages = years.map(function(y) {
-//   return createYearlyComposite(y);
-// });
-
-// // Remove nulls manually (List-based filtering)
-// var validYearlyImages = yearlyImages.map(function(img) {
-//   return ee.Image(img);
-// }).filter(ee.Filter.notNull(['year'])); // works since 'year' is set only for valid ones
-
-// // Convert to ImageCollection
-// var yearlyComposites = ee.ImageCollection.fromImages(validYearlyImages);
-// print('Yearly harmonized composites:', yearlyComposites);
-// print('Years available:', yearlyComposites.aggregate_array('year'));
-
-// // -------------------------------------------------------
-// // Optional: Visualization preview (safe & limited)
-// // -------------------------------------------------------
-// var visParams = {bands: ['B3','B2','B1'], min: 0, max: 0.3, gamma: 1.3};
-// Map.centerObject(Prestea, 10);
-
-// // Safely preview first 3 years
-// var sampleYearsServer = yearlyComposites.aggregate_array('year').slice(0, 3);
-// sampleYearsServer.evaluate(function(sampleYears) {
-//   if (sampleYears && sampleYears.length) {
-//     sampleYears.forEach(function(y) {
-//       var img = yearlyComposites.filter(ee.Filter.eq('year', y)).first();
-//       Map.addLayer(img, visParams, 'Composite ' + y);
-//     });
-//   } else {
-//     print(' No valid years found in the harmonized collection.');
-//   }
-// });
-
-
-
-
-
-
-// ///////////////YEARLY COMPOSITE IMAGE COLLECTION////////
-// print("YEARLY COMPOSITE IMAGE COLLECTION")
-// var yearlyCollection = ee.ImageCollection.fromImages(yearlyComposites);
-// print('Yearly harmonized ImageCollection:', yearlyCollection);
 
