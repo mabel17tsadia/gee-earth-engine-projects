@@ -281,7 +281,7 @@ print('Harmonized collection ready. Image count:', all_harmonized.size());
 print('Sample band names (first valid image):', ee.Image(all_harmonized.first()).bandNames());
 
 Map.addLayer(
-  all_harmonized.median().clip(Prestea),
+  all_harmonized.median().clip(aoi),
   {bands:['B3','B2','B1'], min:0, max:0.3, gamma:1.3},
   'Harmonized Composite (Preview)'
 );
