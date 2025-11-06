@@ -1,7 +1,7 @@
 // ========================================================
-// GALAMSEY PROJECT – PHASE 2
+// GALAMSEY PROJECT
 // STEP 1: ATMOSPHERIC CORRECTION + CLOUD/SHADOW MASKING
-// AOI: Tarkwa-Nsuaem Municipality
+// AOI: THE SAID Municipality
 // Status: COMPLETE
 // ========================================================
 
@@ -152,38 +152,38 @@ print('SENTINEL-2 COMPOSITE: FULL AOI COVERAGE ACHIEVED');
 
 
 
-// -------------------------------------------------------
-// PRINT BAND NAMES ONLY
-// -------------------------------------------------------
-print('EXTRA STEP: PRINT BAND NAMES ONLY');
+// // -------------------------------------------------------
+// // PRINT BAND NAMES ONLY
+// // -------------------------------------------------------
+// print('EXTRA STEP: PRINT BAND NAMES ONLY');
 
-function printBandNames(col, name) {
-  var count = col.size();
-  // Get the first image safely
-  var firstImg = ee.Image(col.first());
+// function printBandNames(col, name) {
+//   var count = col.size();
+//   // Get the first image safely
+//   var firstImg = ee.Image(col.first());
   
-  // Only print band names if there are images
-  var bands = ee.Algorithms.If(
-    count.gt(0),
-    firstImg.bandNames(),
-    'No images found'
-  );
+//   // Only print band names if there are images
+//   var bands = ee.Algorithms.If(
+//     count.gt(0),
+//     firstImg.bandNames(),
+//     'No images found'
+//   );
   
-  print(name + ':', bands);
-}
+//   print(name + ':', bands);
+// }
 
-// Run for each collection
-printBandNames(l5_clean, 'Landsat 5');
-printBandNames(l7_clean, 'Landsat 7');
-printBandNames(l8_clean, 'Landsat 8');
-printBandNames(l9_clean, 'Landsat 9');
-printBandNames(s2_clean, 'Sentinel-2');
+// // Run for each collection
+// printBandNames(l5_clean, 'Landsat 5');
+// printBandNames(l7_clean, 'Landsat 7');
+// printBandNames(l8_clean, 'Landsat 8');
+// printBandNames(l9_clean, 'Landsat 9');
+// printBandNames(s2_clean, 'Sentinel-2');
 
 
 
 
 // ========================================================
-// PHASE 2: HARMONIZATION — Landsat (7,8,9) & Sentinel-2
+// PHASE 2: 2. HARMONIZATION — Landsat (7,8,9) & Sentinel-2
 // ========================================================
 
 print('IMAGE HARMONIZATION BEGINS');
@@ -210,28 +210,28 @@ function safeRename(image, oldBands, newBands) {
 function renameL5(image) {
   return safeRename(image,
     ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'],
-    ['B1','B2','B3','B4','B5','B7']);
+    ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']);
 }
 
 function renameL7(image) {
   return safeRename(image,
     ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'],
-    ['B1','B2','B3','B4','B5','B7']);
+    ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']);
 }
 function renameL8(image) {
   return safeRename(image,
     ['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'],
-    ['B1','B2','B3','B4','B5','B7']);
+    ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']);
 }
 function renameL9(image) {
   return safeRename(image,
     ['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','SR_B7'],
-    ['B1','B2','B3','B4','B5','B7']);
+    ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']);
 }
 function renameS2(image) {
   return safeRename(image,
     ['B2','B3','B4','B8','B11','B12'],
-    ['B1','B2','B3','B4','B5','B7']);
+    ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']);
 }
 
 // -------------------------------------------------------
@@ -290,3 +290,4 @@ print('HARMONIZATION COMPLETE');
 
 
 
+//////////////////GENERATE SPECTRAL INDICES///////////////////
