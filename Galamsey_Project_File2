@@ -198,6 +198,18 @@ for (var year = startYear; year <= endYear; year++) {
 
 
 
+print('Index Summary:');
+print('NDVI: Vegetation health [-1,1]');
+print('EVI: Enhanced vegetation index');
+print('NDWI: Water bodies (Green-NIR)');
+print('MNDWI: Improved water detection');
+print('NDBI: Built-up areas');
+print('NBR: Burn severity');
+print('BSI: Bare soil index');
+print('IOI: Iron oxide (Red/Blue)');
+print('CMR: Clay minerals (SWIR1/SWIR2)');
+print('GPI: Gold Potential Index [(Red/Blue + SWIR1/SWIR2) / (Green + NIR)] - High values (>1) indicate alteration zones');
+print('Gold_Hotspots: Binary mask for GPI >1');
 
 
 
