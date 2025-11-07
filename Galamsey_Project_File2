@@ -102,117 +102,69 @@ var filled = composite.focal_mean({
 
 // ---------------------------
 // SPECTRAL INDICES FUNCTIONS
+// ========================================================
+// STEP 2: COMPUTE AND VISUALIZE INDICES (for 2025 Composite)
+// ========================================================
+
+// Load 2025 composite (exported or created in memory)
+var composite2025 = filled; // <-- if running after Step 1 in same script
+// If running standalone, use:
+// var composite2025 = ee.Image('users/your_username/Galamsey_Project_BDG/L8_2025_Composite');
+
+print('2025 Composite:', composite2025);
+
 // ---------------------------
-function addIndices(image) {
-  // NDVI = (NIR - RED)/(NIR + RED)
-  var ndvi = image.normalizedDifference(['B5', 'B4']).rename('NDVI');
+// Define index functions
+// ---------------------------
+function addIndices(img) {
+  var ndvi = img.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+  var ndbi = img.normalizedDifference(['B6_p20', 'B5_p20']).rename('NDBI');
+  var ndmi = img.normalizedDifference(['B5_p20', 'B6_p20']).rename('NDMI');
+  var gci  = img.expression('(B5_p20 / B3_p20) - 1', {
+    'B5_p20': img.select('B5_p20'),
+    'B3_p20': img.select('B3_p20')
+  }).rename('GCI');
+  var gpi  = img.expression('(B6_p20 * B5_p20) / (B4_p20 + B2_p20)', {
+    'B6_p20': img.select('B6_p20'),
+    'B5_p20': img.select('B5_p20'),
+    'B4_p20': img.select('B4_p20'),
+    'B2_p20': img.select('B2_p20')
+  }).rename('GPI');
+  // Gold Hotspots (commented out due to tile errors)
+  // var gold = img.expression('(B7_p20 / B5_p20)', {
+  //   'B7_p20': img.select('B7_p20'),
+  //   'B5_p20': img.select('B5_p20')
+  // }).rename('GoldHotspots');
 
-  // EVI = 2.5 * (NIR - RED)/(NIR + 6*RED - 7.5*BLUE + 1)
-  var evi = image.expression(
-    '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
-      'NIR': image.select('B5'),
-      'RED': image.select('B4'),
-      'BLUE': image.select('B2')
-    }).rename('EVI');
-
-  // NDWI = (GREEN - NIR)/(GREEN + NIR)
-  var ndwi = image.normalizedDifference(['B3','B5']).rename('NDWI');
-
-  // MNDWI = (GREEN - SWIR1)/(GREEN + SWIR1)
-  var mndwi = image.normalizedDifference(['B3','B6']).rename('MNDWI');
-
-  // NDBI = (SWIR1 - NIR)/(SWIR1 + NIR)
-  var ndbi = image.normalizedDifference(['B6','B5']).rename('NDBI');
-
-  // NBR = (NIR - SWIR2)/(NIR + SWIR2)
-  var nbr = image.normalizedDifference(['B5','B7']).rename('NBR');
-
-  // BSI = ((SWIR1 + RED) - (NIR + BLUE))/((SWIR1 + RED) + (NIR + BLUE))
-  var bsi = image.expression(
-    '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
-      'SWIR1': image.select('B6'),
-      'RED': image.select('B4'),
-      'NIR': image.select('B5'),
-      'BLUE': image.select('B2')
-    }).rename('BSI');
-
-  // IOI = RED / BLUE
-  var ioi = image.select('B4').divide(image.select('B2')).rename('IOI');
-
-  // CMR = SWIR1 / SWIR2
-  var cmr = image.select('B6').divide(image.select('B7')).rename('CMR');
-
-  // GPI = ((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)
-  var gpi = image.expression(
-    '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
-      'RED': image.select('B4'),
-      'BLUE': image.select('B2'),
-      'SWIR1': image.select('B6'),
-      'SWIR2': image.select('B7'),
-      'GREEN': image.select('B3'),
-      'NIR': image.select('B5')
-    }).rename('GPI');
-
-  // Binary mask for GPI > 1
-  var gold_hotspots = gpi.gt(1).rename('Gold_Hotspots');
-
-  return image.addBands([ndvi,evi,ndwi,mndwi,ndbi,nbr,bsi,ioi,cmr,gpi,gold_hotspots]);
+  return img.addBands([ndvi, ndbi, ndmi, gci, gpi]);
 }
 
+// ---------------------------
+// Apply indices
+// ---------------------------
+var indices2025 = addIndices(composite2025);
+print('Indices 2025:', indices2025);
 
-for (var year = startYear; year <= endYear; year++) {
+// ---------------------------
+// Visualization parameters
+// ---------------------------
+var visParams = {
+  NDVI: {min: -0.5, max: 1, palette: ['brown', 'yellow', 'green']},
+  NDBI: {min: -0.5, max: 0.5, palette: ['blue', 'white', 'red']},
+  NDMI: {min: -0.5, max: 1, palette: ['red', 'white', 'blue']},
+  GCI:  {min: 0, max: 2, palette: ['purple', 'yellow', 'green']},
+  GPI:  {min: 0, max: 20000, palette: ['black', 'orange', 'yellow']}
+  // GoldHotspots: {min: 0, max: 3, palette: ['black','gold','white']}
+};
 
-  var start = ee.Date.fromYMD(year-1,1,1);
-  var end   = ee.Date.fromYMD(year+1,12,31);
-
-  var l8_filtered = l8.filterBounds(aoi)
-                      .filterDate(start, end)
-                      .map(maskL8sr);
-
-  print('Year ' + year + ' image count:', l8_filtered.size());
-  if (l8_filtered.size().getInfo() === 0) continue;
-
-  // Composite
-  var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
-  var filled = composite.focal_mean({radius:90, units:'meters', kernelType:'circle'}).blend(composite);
-
-  // Add spectral indices
-  var composite_with_indices = addIndices(filled);
-
-  // Display NDVI as example
-  Map.addLayer(composite_with_indices.select('NDVI'), {min:0, max:1, palette:['red','yellow','green']}, year + ' NDVI');
-
-  // Export the composite with indices
-  Export.image.toDrive({
-    image: composite_with_indices,
-    description: 'L8_' + year + '_Composite_Indices',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite_Indices',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
-}
-
-
-
-
-print('Index Summary:');
-print('NDVI: Vegetation health [-1,1]');
-print('EVI: Enhanced vegetation index');
-print('NDWI: Water bodies (Green-NIR)');
-print('MNDWI: Improved water detection');
-print('NDBI: Built-up areas');
-print('NBR: Burn severity');
-print('BSI: Bare soil index');
-print('IOI: Iron oxide (Red/Blue)');
-print('CMR: Clay minerals (SWIR1/SWIR2)');
-print('GPI: Gold Potential Index [(Red/Blue + SWIR1/SWIR2) / (Green + NIR)] - High values (>1) indicate alteration zones');
-print('Gold_Hotspots: Binary mask for GPI >1');
-
-
-
-
-
+// ---------------------------
+// Add layers to the Map
+// ---------------------------
+Map.centerObject(aoi, 10);
+Map.addLayer(indices2025.select('NDVI'), visParams.NDVI, 'NDVI (2025)');
+Map.addLayer(indices2025.select('NDBI'), visParams.NDBI, 'NDBI (2025)');
+Map.addLayer(indices2025.select('NDMI'), visParams.NDMI, 'NDMI (2025)');
+Map.addLayer(indices2025.select('GCI'),  visParams.GCI,  'GCI (2025)');
+Map.addLayer(indices2025.select('GPI'),  visParams.GPI,  'GPI (2025)');
+// Map.addLayer(indices2025.select('GoldHotspots'), visParams.GoldHotspots, 'Gold Hotspots (2025)');
 
