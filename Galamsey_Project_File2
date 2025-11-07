@@ -163,23 +163,13 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
             }),
         ee.Feature(
             ee.Geometry.Polygon(
-                [[[-2.169449174977154, 5.52831688045567],
-                  [-2.1709082966812554, 5.52754799677269],
-                  [-2.170264566517681, 5.52639466937603],
-                  [-2.1686766987808648, 5.527676144122531]]]),
-            {
-              "class": 1,
-              "system:index": "16"
-            }),
-        ee.Feature(
-            ee.Geometry.Polygon(
                 [[[-2.1337006932266656, 5.499653931294734],
                   [-2.131297433949322, 5.499141317529749],
                   [-2.1311257725723687, 5.500508286588396],
                   [-2.133185709095806, 5.501277205303787]]]),
             {
               "class": 1,
-              "system:index": "17"
+              "system:index": "16"
             })]);
 /***** End of imports. If edited, may not auto-convert in the playground. *****/
 
