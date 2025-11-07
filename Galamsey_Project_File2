@@ -501,3 +501,156 @@ Map.addLayer(nonMinedSamples, {color: 'green'}, 'Non-Mined Samples');
 var composite2025 = ee.Image(composites[2025]);
 var composite2025_with_indices = ee.Image(composites_with_indices[2025]);
 
+
+
+// =====================================================
+// STEP 3D — Sample for Classifier
+// =====================================================
+
+var bands = ['B2_p20','B3_p20','B4_p20','B5_p20','B6_p20','B7_p20','NDVI','NDWI','NDBI','GPI'];
+
+var training = composite2025_with_indices.select(bands).sampleRegions({
+  collection: labeledSamples,
+  properties: ['class'],
+  scale: 30
+});
+
+print('Training samples:', training.size());
+
+
+
+// =====================================================
+// STEP 3E — Train/Test Split
+// =====================================================
+var withRandom = training.randomColumn('random', 42);
+var trainSet = withRandom.filter(ee.Filter.lt('random', 0.7));
+var testSet  = withRandom.filter(ee.Filter.gte('random', 0.7));
+
+print('Train set size:', trainSet.size());
+print('Test set size:', testSet.size());
+
+
+
+// =====================================================
+// STEP 3F — Train Random Forest Classifier
+// =====================================================
+var rf = ee.Classifier.smileRandomForest({
+  numberOfTrees: 100,
+  variablesPerSplit: null,
+  minLeafPopulation: 1
+}).setOutputMode('CLASSIFICATION');
+
+var trainedRF = rf.train({
+  features: trainSet,
+  classProperty: 'class',
+  inputProperties: bands
+});
+
+print('✅ Random Forest training completed!');
+
+
+
+// =====================================================
+// STEP 3G — Model Evaluation
+// =====================================================
+var validated = testSet.classify(trainedRF);
+var cm = validated.errorMatrix('class', 'classification');
+
+print('=== CONFUSION MATRIX ===');
+print(cm);
+print('Accuracy:', cm.accuracy());
+print('Kappa:', cm.kappa());
+
+
+
+// =====================================================
+// STEP 3H — Feature Importance (Optional)
+// =====================================================
+print('Feature Importance:', ee.Dictionary(trainedRF.explain().get('importance')));
+
+
+
+// =====================================================
+// STEP 3I — Inference / Active Mining Prediction
+// =====================================================
+var classified2025 = composite2025_with_indices.select(bands).classify(trainedRF);
+
+var visParams = {
+  min: 0, max: 1,
+  palette: ['#00FF00', '#FF0000'], // green = non-mined, red = mined
+};
+
+Map.addLayer(classified2025.clip(AOI), visParams, 'Active Mining (2025)', false);
+
+
+
+// =====================================================
+// STEP 3J — Export Classified Map (Optional)
+// =====================================================
+Export.image.toDrive({
+  image: classified2025.clip(AOI),
+  description: 'Active_Mining_2025_RF',
+  folder: 'GEE_Exports',
+  fileNamePrefix: 'Active_Mining_2025_RF',
+  region: AOI.geometry(),
+  scale: 30,
+  maxPixels: 1e13
+});
+
+
+
+
+// =====================================================
+// STEP 3K — Add Legend for Classified Map
+// =====================================================
+
+// Create a panel to hold the legend
+var legendPanel = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    border: '1px solid black',
+    width: '160px'
+  }
+});
+
+// Legend title
+var legendTitle = ui.Label({
+  value: 'Active Mining (2025)',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '14px',
+    margin: '0 0 8px 0',
+    textAlign: 'center'
+  }
+});
+legendPanel.add(legendTitle);
+
+// Function to create legend entries
+function makeLegendRow(color, name) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  var description = ui.Label({
+    value: name,
+    style: { margin: '0 0 4px 6px', fontSize: '13px' }
+  });
+
+  return ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+}
+
+// Add classes
+legendPanel.add(makeLegendRow('#00FF00', 'Non-mined'));
+legendPanel.add(makeLegendRow('#FF0000', 'Mined'));
+
+// Add to the map
+Map.add(legendPanel);
+
