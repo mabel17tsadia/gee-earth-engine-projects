@@ -1,27 +1,27 @@
 /**** Start of imports. If edited, may not auto-convert in the playground. ****/
 var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_WR");
 /***** End of imports. If edited, may not auto-convert in the playground. *****/
+
 // ========================================================
 // GALAMSEY PROJECT
-// AOI: THE SAID Municipality
-// Status: COMPLETE
+// STEP 1: COMPOSITES (all years, exports all)
+// STEP 2: INDICES (all years, but visualize only 2025)
 // ========================================================
 
 //-------------------------------------------------------
 // 1. LOAD AOI FROM ASSET
-
-Map.centerObject(aoi)
-Map.addLayer(aoi.style({color: 'yellow', width: 2, fillColor: '00000000'
-}), {}, 'AOI Outline');
-
+Map.centerObject(aoi);
+Map.addLayer(aoi.style({
+  color: 'yellow', width: 2, fillColor: '00000000'
+}), {}, 'AOI Outline', false);
 
 // ---------------------------
 // USER PARAMETERS
 // ---------------------------
-//var aoi = western;               // your study area geometry
-var folderName = 'Galamsey_Project_BDG';      // Drive folder
+var folderName = 'Galamsey_Project_BDG';
 var startYear = 2010;
-var endYear   = 2025;
+var endYear = 2025;
+var visualYear = 2025; // Only this year will display layers
 
 // ---------------------------
 // LOAD LANDSAT 8 SR COLLECTION
@@ -36,7 +36,7 @@ function maskL8sr(image) {
   var cloudShadowBitMask = (1 << 3);
   var cloudBitMask = (1 << 5);
   var mask = qaPixel.bitwiseAnd(cloudShadowBitMask).eq(0)
-              .and(qaPixel.bitwiseAnd(cloudBitMask).eq(0))
+              .and(qaPixel.bitwiseAnd(cloudBitMask).eq(0));
 
   return image.updateMask(mask)
               .multiply(0.0000275)
@@ -48,123 +48,169 @@ function maskL8sr(image) {
 }
 
 // ---------------------------
-// LOOP THROUGH YEARS
+// SPECTRAL INDICES FUNCTION
 // ---------------------------
+function addIndices(image) {
+  var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+  var evi = image.expression(
+    '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
+      'NIR': image.select('B5_p20'),
+      'RED': image.select('B4_p20'),
+      'BLUE': image.select('B2_p20')
+    }).rename('EVI');
+  var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
+  var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
+  var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
+  var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
+  var bsi = image.expression(
+    '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
+      'SWIR1': image.select('B6_p20'),
+      'RED': image.select('B4_p20'),
+      'NIR': image.select('B5_p20'),
+      'BLUE': image.select('B2_p20')
+    }).rename('BSI');
+  var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
+  var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
+  var gpi = image.expression(
+    '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
+      'RED': image.select('B4_p20'),
+      'BLUE': image.select('B2_p20'),
+      'SWIR1': image.select('B6_p20'),
+      'SWIR2': image.select('B7_p20'),
+      'GREEN': image.select('B3_p20'),
+      'NIR': image.select('B5_p20')
+    }).rename('GPI');
+
+  return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
+}
+
+// ---------------------------
+// VISUALIZATION PARAMETERS
+// ---------------------------
+var vis = {
+  NDVI: {min: 0, max: 1, palette: ['red', 'yellow', 'green']},
+  EVI: {min: 0, max: 1, palette: ['brown', 'yellow', 'darkgreen']},
+  NDWI: {min: -1, max: 1, palette: ['brown','blue']},
+  MNDWI: {min: -1, max: 1, palette: ['brown','cyan']},
+  NDBI: {min: -1, max: 1, palette: ['blue','white','brown']},
+  NBR: {min: -1, max: 1, palette: ['red','white','green']},
+  BSI: {min: -1, max: 1, palette: ['green','yellow','brown']},
+  IOI: {min: 0, max: 3, palette: ['blue','white','red']},
+  CMR: {min: 0, max: 2, palette: ['purple','white','orange']},
+  GPI: {min: 0, max: 3, palette: ['blue','white','red']}
+};
+
+// ========================================================
+// LOOP THROUGH YEARS
+// ========================================================
 for (var year = startYear; year <= endYear; year++) {
+  var start = ee.Date.fromYMD(year - 1, 1, 1);
+  var end = ee.Date.fromYMD(year + 1, 12, 31);
 
-  // var start = ee.Date.fromYMD(year, 1, 1);
-  // var end   = ee.Date.fromYMD(year, 12, 31);
-var start = ee.Date.fromYMD(year - 1, 1, 1);
-var end = ee.Date.fromYMD(year + 1, 12, 31);
-
-  // Filter, mask clouds, and make median composite
   var l8_filtered = l8.filterBounds(aoi)
                       .filterDate(start, end)
-                       //.filter(ee.Filter.lt('CLOUD_COVER', 10))
                       .map(maskL8sr);
 
-  // var composite = l8_filtered.median().clip(aoi);
-  //var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
- 
-  // Median or percentile composite
-var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+  print('Year ' + year + ' image count:', l8_filtered.size());
+  if (l8_filtered.size().getInfo() === 0) continue;
 
-// Fill small gaps using focal mean smoothing
-var filled = composite.focal_mean({
-  radius: 90,          // smooth 90m neighborhood
-  units: 'meters',
-  kernelType: 'circle'
-}).blend(composite);    // blend with original to keep detail
+  var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+  var filled = composite.focal_mean({
+    radius: 90, units: 'meters', kernelType: 'circle'
+  }).blend(composite);
 
-
-  // Add to Map
-  // Map.addLayer(composite, {bands:['B4','B3','B2'], min:0, max:0.3},
-  //             year + ' Landsat8 Composite');
-  Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-              year + ' Landsat8 Composite');
-
-  // ---------------------------
-  // EXPORT TO GOOGLE DRIVE
-  // ---------------------------
+  // Export composite
   Export.image.toDrive({
     image: composite,
     description: 'L8_' + year + '_Composite',
     folder: folderName,
     fileNamePrefix: 'L8_' + year + '_Composite',
     region: aoi,
-    scale: 30,                 // Landsat native resolution
-    crs: 'EPSG:32630',         // UTM Zone 30N (fits Western Ghana)
+    scale: 30,
+    crs: 'EPSG:32630',
     maxPixels: 1e13
   });
- }
 
+  // Add indices
+  var indices = addIndices(filled);
 
+  // Export indices
+  Export.image.toDrive({
+    image: indices,
+    description: 'L8_' + year + '_Composite_Indices',
+    folder: folderName,
+    fileNamePrefix: 'L8_' + year + '_Composite_Indices',
+    region: aoi,
+    scale: 30,
+    crs: 'EPSG:32630',
+    maxPixels: 1e13
+  });
 
-// ---------------------------
-// SPECTRAL INDICES FUNCTIONS
-// ========================================================
-// STEP 2: COMPUTE AND VISUALIZE INDICES (for 2025 Composite)
-// ========================================================
+  // ---------------------------------------------
+  // SHOW ONLY 2025 LAYERS ON MAP
+  // (Uncomment to show for other years)
+  // ---------------------------------------------
+  if (year === visualYear) {
+    Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
+                 year + ' Composite', false);
 
-// Load 2025 composite (exported or created in memory)
-var composite2025 = filled; // <-- if running after Step 1 in same script
-// If running standalone, use:
-// var composite2025 = ee.Image('users/your_username/Galamsey_Project_BDG/L8_2025_Composite');
+    Object.keys(vis).forEach(function(key) {
+      Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
+    });
+  }
 
-print('2025 Composite:', composite2025);
-
-// ---------------------------
-// Define index functions
-// ---------------------------
-function addIndices(img) {
-  var ndvi = img.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
-  var ndbi = img.normalizedDifference(['B6_p20', 'B5_p20']).rename('NDBI');
-  var ndmi = img.normalizedDifference(['B5_p20', 'B6_p20']).rename('NDMI');
-  var gci  = img.expression('(B5_p20 / B3_p20) - 1', {
-    'B5_p20': img.select('B5_p20'),
-    'B3_p20': img.select('B3_p20')
-  }).rename('GCI');
-  var gpi  = img.expression('(B6_p20 * B5_p20) / (B4_p20 + B2_p20)', {
-    'B6_p20': img.select('B6_p20'),
-    'B5_p20': img.select('B5_p20'),
-    'B4_p20': img.select('B4_p20'),
-    'B2_p20': img.select('B2_p20')
-  }).rename('GPI');
-  // Gold Hotspots (commented out due to tile errors)
-  // var gold = img.expression('(B7_p20 / B5_p20)', {
-  //   'B7_p20': img.select('B7_p20'),
-  //   'B5_p20': img.select('B5_p20')
-  // }).rename('GoldHotspots');
-
-  return img.addBands([ndvi, ndbi, ndmi, gci, gpi]);
+  // Uncomment this block below to visualize other years
+  /*
+  if (year === 2020) {
+    Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
+                 year + ' Composite', false);
+    Object.keys(vis).forEach(function(key) {
+      Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
+    });
+  }
+  */
 }
 
-// ---------------------------
-// Apply indices
-// ---------------------------
-var indices2025 = addIndices(composite2025);
-print('Indices 2025:', indices2025);
+// ========================================================
+// LEGEND PANEL (scrollable)
+// ========================================================
+var legends = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical'),
+  style: {width: '160px', padding: '8px'}
+});
 
-// ---------------------------
-// Visualization parameters
-// ---------------------------
-var visParams = {
-  NDVI: {min: -0.5, max: 1, palette: ['brown', 'yellow', 'green']},
-  NDBI: {min: -0.5, max: 0.5, palette: ['blue', 'white', 'red']},
-  NDMI: {min: -0.5, max: 1, palette: ['red', 'white', 'blue']},
-  GCI:  {min: 0, max: 2, palette: ['purple', 'yellow', 'green']},
-  GPI:  {min: 0, max: 20000, palette: ['black', 'orange', 'yellow']}
-  // GoldHotspots: {min: 0, max: 3, palette: ['black','gold','white']}
-};
+legends.add(ui.Label({
+  value: 'Spectral Indices (2025)',
+  style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
+}));
 
-// ---------------------------
-// Add layers to the Map
-// ---------------------------
-Map.centerObject(aoi, 10);
-Map.addLayer(indices2025.select('NDVI'), visParams.NDVI, 'NDVI (2025)');
-Map.addLayer(indices2025.select('NDBI'), visParams.NDBI, 'NDBI (2025)');
-Map.addLayer(indices2025.select('NDMI'), visParams.NDMI, 'NDMI (2025)');
-Map.addLayer(indices2025.select('GCI'),  visParams.GCI,  'GCI (2025)');
-Map.addLayer(indices2025.select('GPI'),  visParams.GPI,  'GPI (2025)');
-// Map.addLayer(indices2025.select('GoldHotspots'), visParams.GoldHotspots, 'Gold Hotspots (2025)');
+Object.keys(vis).forEach(function (key) {
+  legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
+  var colorBar = ui.Thumbnail({
+    image: ee.Image.pixelLonLat().select(0)
+             .multiply(vis[key].max - vis[key].min)
+             .add(vis[key].min),
+    params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
+             min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
+    style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
+  });
+  legends.add(colorBar);
+});
 
+// === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
+var scrollPanel = ui.Panel(
+  // widgets
+  [ legends ],
+  // layout
+  ui.Panel.Layout.flow('vertical'),
+  // style
+  {
+    position: 'bottom-left',
+    width: '180px',
+    height: '250px',         // fixed height -> scrollbar appears when needed
+    padding: '4px',
+    backgroundColor: 'rgba(255,255,255,0.8)'
+  }
+);
+
+Map.add(scrollPanel);
