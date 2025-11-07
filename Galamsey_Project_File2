@@ -266,226 +266,277 @@ function maskL8sr(image) {
               );
 }
 
-// ---------------------------
-// SPECTRAL INDICES FUNCTION
-// ---------------------------
-function addIndices(image) {
-  var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
-  var evi = image.expression(
-    '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
-      'NIR': image.select('B5_p20'),
-      'RED': image.select('B4_p20'),
-      'BLUE': image.select('B2_p20')
-    }).rename('EVI');
-  var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
-  var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
-  var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
-  var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
-  var bsi = image.expression(
-    '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
-      'SWIR1': image.select('B6_p20'),
-      'RED': image.select('B4_p20'),
-      'NIR': image.select('B5_p20'),
-      'BLUE': image.select('B2_p20')
-    }).rename('BSI');
-  var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
-  var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
-  var gpi = image.expression(
-    '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
-      'RED': image.select('B4_p20'),
-      'BLUE': image.select('B2_p20'),
-      'SWIR1': image.select('B6_p20'),
-      'SWIR2': image.select('B7_p20'),
-      'GREEN': image.select('B3_p20'),
-      'NIR': image.select('B5_p20')
-    }).rename('GPI');
+var composites = {};  // storage dictionary
 
-  return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
-}
-
-// ---------------------------
-// VISUALIZATION PARAMETERS
-// ---------------------------
-var vis = {
-  NDVI: {min: 0, max: 1, palette: ['red', 'yellow', 'green']},
-  EVI: {min: 0, max: 1, palette: ['brown', 'yellow', 'darkgreen']},
-  NDWI: {min: -1, max: 1, palette: ['brown','blue']},
-  MNDWI: {min: -1, max: 1, palette: ['brown','cyan']},
-  NDBI: {min: -1, max: 1, palette: ['blue','white','brown']},
-  NBR: {min: -1, max: 1, palette: ['red','white','green']},
-  BSI: {min: -1, max: 1, palette: ['green','yellow','brown']},
-  IOI: {min: 0, max: 3, palette: ['blue','white','red']},
-  CMR: {min: 0, max: 2, palette: ['purple','white','orange']},
-  GPI: {min: 0, max: 3, palette: ['blue','white','red']}
-};
-
-// ========================================================
-// LOOP THROUGH YEARS
-// ========================================================
 for (var year = startYear; year <= endYear; year++) {
   var start = ee.Date.fromYMD(year - 1, 1, 1);
-  var end = ee.Date.fromYMD(year + 1, 12, 31);
-
+  var end   = ee.Date.fromYMD(year + 1, 12, 31);
   var l8_filtered = l8.filterBounds(aoi)
                       .filterDate(start, end)
                       .map(maskL8sr);
-
-  print('Year ' + year + ' image count:', l8_filtered.size());
-  if (l8_filtered.size().getInfo() === 0) continue;
-
   var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
-  var filled = composite.focal_mean({
-    radius: 90, units: 'meters', kernelType: 'circle'
-  }).blend(composite);
+  var filled = composite.focal_mean({radius: 90, units: 'meters'}).blend(composite);
 
-  // Export composite
-  Export.image.toDrive({
-    image: composite,
-    description: 'L8_' + year + '_Composite',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
-
-  // Add indices
-  var indices = addIndices(filled);
-
-  // Export indices
-  Export.image.toDrive({
-    image: indices,
-    description: 'L8_' + year + '_Composite_Indices',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite_Indices',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
-
-  // ---------------------------------------------
-  // SHOW ONLY 2025 LAYERS ON MAP
-  // (Uncomment to show for other years)
-  // ---------------------------------------------
-  if (year === visualYear) {
-    Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-                 year + ' Composite', false);
-
-    Object.keys(vis).forEach(function(key) {
-      Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
-    });
-  }
-
-  // Uncomment this block below to visualize other years
-  /*
-  if (year === 2020) {
-    Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-                 year + ' Composite', false);
-    Object.keys(vis).forEach(function(key) {
-      Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
-    });
-  }
-  */
+  composites[year] = filled;  // store by year
 }
 
-// ========================================================
-// LEGEND PANEL (scrollable)
-// ========================================================
-var legends = ui.Panel({
-  layout: ui.Panel.Layout.flow('vertical'),
-  style: {width: '160px', padding: '8px'}
-});
 
-legends.add(ui.Label({
-  value: 'Spectral Indices (2025)',
-  style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
-}));
+// // ---------------------------
+// // SPECTRAL INDICES FUNCTION
+// // ---------------------------
+// function addIndices(image) {
+//   var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+//   var evi = image.expression(
+//     '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
+//       'NIR': image.select('B5_p20'),
+//       'RED': image.select('B4_p20'),
+//       'BLUE': image.select('B2_p20')
+//     }).rename('EVI');
+//   var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
+//   var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
+//   var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
+//   var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
+//   var bsi = image.expression(
+//     '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
+//       'SWIR1': image.select('B6_p20'),
+//       'RED': image.select('B4_p20'),
+//       'NIR': image.select('B5_p20'),
+//       'BLUE': image.select('B2_p20')
+//     }).rename('BSI');
+//   var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
+//   var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
+//   var gpi = image.expression(
+//     '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
+//       'RED': image.select('B4_p20'),
+//       'BLUE': image.select('B2_p20'),
+//       'SWIR1': image.select('B6_p20'),
+//       'SWIR2': image.select('B7_p20'),
+//       'GREEN': image.select('B3_p20'),
+//       'NIR': image.select('B5_p20')
+//     }).rename('GPI');
 
-Object.keys(vis).forEach(function (key) {
-  legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
-  var colorBar = ui.Thumbnail({
-    image: ee.Image.pixelLonLat().select(0)
-             .multiply(vis[key].max - vis[key].min)
-             .add(vis[key].min),
-    params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
-             min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
-    style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
-  });
-  legends.add(colorBar);
-});
+//   return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
+// }
 
-// === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
-var scrollPanel = ui.Panel(
-  // widgets
-  [ legends ],
-  // layout
-  ui.Panel.Layout.flow('vertical'),
-  // style
-  {
-    position: 'bottom-left',
-    width: '180px',
-    height: '250px',         // fixed height -> scrollbar appears when needed
-    padding: '4px',
-    backgroundColor: 'rgba(255,255,255,0.8)'
-  }
-);
+// // ---------------------------
+// // VISUALIZATION PARAMETERS
+// // ---------------------------
+// var vis = {
+//   NDVI: {min: 0, max: 1, palette: ['red', 'yellow', 'green']},
+//   EVI: {min: 0, max: 1, palette: ['brown', 'yellow', 'darkgreen']},
+//   NDWI: {min: -1, max: 1, palette: ['brown','blue']},
+//   MNDWI: {min: -1, max: 1, palette: ['brown','cyan']},
+//   NDBI: {min: -1, max: 1, palette: ['blue','white','brown']},
+//   NBR: {min: -1, max: 1, palette: ['red','white','green']},
+//   BSI: {min: -1, max: 1, palette: ['green','yellow','brown']},
+//   IOI: {min: 0, max: 3, palette: ['blue','white','red']},
+//   CMR: {min: 0, max: 2, palette: ['purple','white','orange']},
+//   GPI: {min: 0, max: 3, palette: ['blue','white','red']}
+// };
 
-Map.add(scrollPanel);
+// // ========================================================
+// // LOOP THROUGH YEARS
+// // ========================================================
+// for (var year = startYear; year <= endYear; year++) {
+//   var start = ee.Date.fromYMD(year - 1, 1, 1);
+//   var end = ee.Date.fromYMD(year + 1, 12, 31);
+
+//   var l8_filtered = l8.filterBounds(aoi)
+//                       .filterDate(start, end)
+//                       .map(maskL8sr);
+
+//   print('Year ' + year + ' image count:', l8_filtered.size());
+//   if (l8_filtered.size().getInfo() === 0) continue;
+
+//   var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+//   var filled = composite.focal_mean({
+//     radius: 90, units: 'meters', kernelType: 'circle'
+//   }).blend(composite);
+
+//   // Export composite
+//   Export.image.toDrive({
+//     image: composite,
+//     description: 'L8_' + year + '_Composite',
+//     folder: folderName,
+//     fileNamePrefix: 'L8_' + year + '_Composite',
+//     region: aoi,
+//     scale: 30,
+//     crs: 'EPSG:32630',
+//     maxPixels: 1e13
+//   });
+
+//   // Add indices
+//   var indices = addIndices(filled);
+
+//   // Export indices
+//   Export.image.toDrive({
+//     image: indices,
+//     description: 'L8_' + year + '_Composite_Indices',
+//     folder: folderName,
+//     fileNamePrefix: 'L8_' + year + '_Composite_Indices',
+//     region: aoi,
+//     scale: 30,
+//     crs: 'EPSG:32630',
+//     maxPixels: 1e13
+//   });
+
+//   // ---------------------------------------------
+//   // SHOW ONLY 2025 LAYERS ON MAP
+//   // (Uncomment to show for other years)
+//   // ---------------------------------------------
+//   if (year === visualYear) {
+//     Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
+//                 year + ' Composite', false);
+
+//     Object.keys(vis).forEach(function(key) {
+//       Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
+//     });
+//   }
+
+//   // Uncomment this block below to visualize other years
+//   /*
+//   if (year === 2020) {
+//     Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
+//                 year + ' Composite', false);
+//     Object.keys(vis).forEach(function(key) {
+//       Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
+//     });
+//   }
+//   */
+// }
+
+// // ========================================================
+// // LEGEND PANEL (scrollable)
+// // ========================================================
+// var legends = ui.Panel({
+//   layout: ui.Panel.Layout.flow('vertical'),
+//   style: {width: '160px', padding: '8px'}
+// });
+
+// legends.add(ui.Label({
+//   value: 'Spectral Indices (2025)',
+//   style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
+// }));
+
+// Object.keys(vis).forEach(function (key) {
+//   legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
+//   var colorBar = ui.Thumbnail({
+//     image: ee.Image.pixelLonLat().select(0)
+//             .multiply(vis[key].max - vis[key].min)
+//             .add(vis[key].min),
+//     params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
+//             min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
+//     style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
+//   });
+//   legends.add(colorBar);
+// });
+
+// // === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
+// var scrollPanel = ui.Panel(
+//   // widgets
+//   [ legends ],
+//   // layout
+//   ui.Panel.Layout.flow('vertical'),
+//   // style
+//   {
+//     position: 'bottom-left',
+//     width: '180px',
+//     height: '250px',         // fixed height -> scrollbar appears when needed
+//     padding: '4px',
+//     backgroundColor: 'rgba(255,255,255,0.8)'
+//   }
+// );
+
+// Map.add(scrollPanel);
 
 
 
-// =====================================================
-// STEP 3A — Label Training Samples
-// =====================================================
-
-// Load your mined polygons
-print('Mined polygons loaded:', minedPolygons.size());
-
-// Give mined label = 1
-var minedSamples = minedPolygons.map(function(f){ return f.set('class', 1); });
-
-// Define AOI (same one from step 1)
-var AOI = aoi;  // reuse from your existing script
-
-// Buffer mined areas to exclude near zones for non-mined sampling
-var minedBuffer = minedSamples.geometry().buffer(200);
-
-// Generate random non-mined points outside mined zones
-var nonMinedSamples = ee.FeatureCollection.randomPoints({
-  region: AOI.geometry().difference(minedBuffer),
-  points: 100, // adjust number based on your AOI size
-  seed: 123
-}).map(function(f){ return f.set('class', 0); });
-
-// Merge mined + non-mined
-var labeledSamples = minedSamples.merge(nonMinedSamples);
-print('Total labeled samples:', labeledSamples.size());
-
-Map.addLayer(minedSamples, {color: 'red'}, 'Mined Samples');
-Map.addLayer(nonMinedSamples, {color: 'green'}, 'Non-Mined Samples');
 
 
-// =====================================================
-// STEP 3B — Extract 2025 Composite
-// =====================================================
+// // =====================================================
+// // STEP 3A — Label Training Samples
+// // =====================================================
 
-var targetYear = 2025;
+// // Load your mined polygons
+// print('Mined polygons loaded:', minedPolygons.size());
 
-// filter for 2025 images (already generated in step 1 loop)
-var start = ee.Date.fromYMD(targetYear - 1, 1, 1);
-var end   = ee.Date.fromYMD(targetYear + 1, 12, 31);
+// // Give mined label = 1
+// var minedSamples = minedPolygons.map(function(f){ return f.set('class', 1); });
 
-var l8_filtered = l8.filterBounds(aoi)
-                    .filterDate(start, end)
-                    .map(maskL8sr);
+// // Define AOI (same one from step 1)
+// var AOI = aoi;  // reuse from your existing script
 
-var composite2025 = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+// // Buffer mined areas to exclude near zones for non-mined sampling
+// var minedBuffer = minedSamples.geometry().buffer(200);
 
-// Optionally apply same filling
-var filled2025 = composite2025.focal_mean({
-  radius: 90, units: 'meters', kernelType: 'circle'
-}).blend(composite2025);
+// // Generate random non-mined points outside mined zones
+// var nonMinedSamples = ee.FeatureCollection.randomPoints({
+//   region: AOI.geometry().difference(minedBuffer),
+//   points: 100, // adjust number based on your AOI size
+//   seed: 123
+// }).map(function(f){ return f.set('class', 0); });
 
-Map.addLayer(filled2025, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3}, '2025 Composite');
+// // Merge mined + non-mined
+// var labeledSamples = minedSamples.merge(nonMinedSamples);
+// print('Total labeled samples:', labeledSamples.size());
+
+// Map.addLayer(minedSamples, {color: 'red'}, 'Mined Samples');
+// Map.addLayer(nonMinedSamples, {color: 'green'}, 'Non-Mined Samples');
+
+
+
+
+
+
+
+
+
+
+
+// // =====================================================
+// // STEP 3B — Extract 2025 Composite
+// // =====================================================
+
+// var targetYear = 2025;
+
+// // filter for 2025 images (already generated in step 1 loop)
+// var start = ee.Date.fromYMD(targetYear - 1, 1, 1);
+// var end   = ee.Date.fromYMD(targetYear + 1, 12, 31);
+
+// var l8_filtered = l8.filterBounds(aoi)
+//                     .filterDate(start, end)
+//                     .map(maskL8sr);
+
+// var composite2025 = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+
+// // Optionally apply same filling
+// var filled2025 = composite2025.focal_mean({
+//   radius: 90, units: 'meters', kernelType: 'circle'
+// }).blend(composite2025);
+
+// Map.addLayer(filled2025, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3}, '2025 Composite');
+
+// // =====================================================
+// // STEP 3C — Add Indices to 2025 Composite
+// // =====================================================
+
+// function addIndices(img) {
+//   var ndvi = img.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+//   var ndwi = img.normalizedDifference(['B3_p20', 'B5_p20']).rename('NDWI');
+//   var ndbi = img.normalizedDifference(['B6_p20', 'B5_p20']).rename('NDBI');
+//   var gpi = img.expression(
+//     '((R/B) + (SWIR1/SWIR2)) / (G + NIR)',
+//     {
+//       R: img.select('B4_p20'),
+//       G: img.select('B3_p20'),
+//       B: img.select('B2_p20'),
+//       NIR: img.select('B5_p20'),
+//       SWIR1: img.select('B6_p20'),
+//       SWIR2: img.select('B7_p20')
+//     }).rename('GPI');
+
+//   return img.addBands([ndvi, ndwi, ndbi, gpi]);
+// }
+
+// var compositeWithIndices = addIndices(filled2025);
+// print('Composite with indices:', compositeWithIndices);
