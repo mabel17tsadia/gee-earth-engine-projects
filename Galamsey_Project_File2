@@ -42,33 +42,13 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
             }),
         ee.Feature(
             ee.Geometry.Polygon(
-                [[[-2.0960760783528998, 5.608438945115513],
-                  [-2.095700569090815, 5.608492332499561],
-                  [-2.095748848853083, 5.608908753927476],
-                  [-2.096092171606989, 5.608930108864484]]]),
-            {
-              "class": 1,
-              "system:index": "4"
-            }),
-        ee.Feature(
-            ee.Geometry.Polygon(
-                [[[-2.0708633692236256, 5.590603043244896],
-                  [-2.0710940391989063, 5.590368131527781],
-                  [-2.0708687336416554, 5.5900691528423705],
-                  [-2.070680979010613, 5.590325420296353]]]),
-            {
-              "class": 1,
-              "system:index": "5"
-            }),
-        ee.Feature(
-            ee.Geometry.Polygon(
                 [[[-2.1152884466319066, 5.496330197458141],
                   [-2.114558885779856, 5.495304963762604],
                   [-2.113786409583567, 5.496330197458141],
                   [-2.114730547156809, 5.497269993461653]]]),
             {
               "class": 1,
-              "system:index": "6"
+              "system:index": "4"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -78,7 +58,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.114730547156809, 5.490926341660222]]]),
             {
               "class": 1,
-              "system:index": "7"
+              "system:index": "5"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -88,7 +68,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.114580343451975, 5.489495272826584]]]),
             {
               "class": 1,
-              "system:index": "8"
+              "system:index": "6"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -98,7 +78,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.1162969572215062, 5.488085559870661]]]),
             {
               "class": 1,
-              "system:index": "9"
+              "system:index": "7"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -108,7 +88,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.1163783220106924, 5.474882721617383]]]),
             {
               "class": 1,
-              "system:index": "10"
+              "system:index": "8"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -118,7 +98,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.124521923181779, 5.46875778865881]]]),
             {
               "class": 1,
-              "system:index": "11"
+              "system:index": "9"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -129,7 +109,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.1332772862232474, 5.319683730452313]]]),
             {
               "class": 1,
-              "system:index": "12"
+              "system:index": "10"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -139,7 +119,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.0877116539702767, 5.528818414945706]]]),
             {
               "class": 1,
-              "system:index": "13"
+              "system:index": "11"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -149,7 +129,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.0861237862334603, 5.530142600047672]]]),
             {
               "class": 1,
-              "system:index": "14"
+              "system:index": "12"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -159,7 +139,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.0936982492330958, 5.53539651828524]]]),
             {
               "class": 1,
-              "system:index": "15"
+              "system:index": "13"
             }),
         ee.Feature(
             ee.Geometry.Polygon(
@@ -169,7 +149,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
                   [-2.133185709095806, 5.501277205303787]]]),
             {
               "class": 1,
-              "system:index": "16"
+              "system:index": "14"
             })]);
 /***** End of imports. If edited, may not auto-convert in the playground. *****/
 
