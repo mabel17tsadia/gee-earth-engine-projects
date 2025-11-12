@@ -80,7 +80,7 @@ var floodVis = {min: 0, max: 1, palette: ['white', 'blue']};
 var riskVis = {min: 0, max: 4, palette: ['#00FF00', '#FFFF00', '#FFA500', '#FF4500', '#FF0000']}; // Green, Yellow, Orange, OrangeRed, Red
 
 // 8. Add Layers to the Map
-Map.addLayer(aoi, {color: 'black'}, 'Madina_Adentan AOI');
+Map.addLayer(aoi, {color: 'black'}, 'Affordable Housing AOI');
 Map.addLayer(dem, demVis, 'Elevation (DEM)');
 Map.addLayer(hand, handVis, 'Height Above Nearest Drainage (HAND)');
 Map.addLayer(rainfall, rainfallVis, 'Total Rainfall (May 2025)');
@@ -141,7 +141,7 @@ Map.add(legend);
 // 10. Export the Classified Flood Risk Map to Google Drive
 Export.image.toDrive({
   image: riskClassified,
-  description: 'Madina_Flood_Risk_Map_2025',
+  description: 'AHP_Flood_Risk_Map_2025',
   scale: 30, // SRTM resolution
   region: aoi,
   maxPixels: 1e10,
