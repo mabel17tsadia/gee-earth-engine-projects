@@ -1,0 +1,149 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var AHP = ee.FeatureCollection("projects/mabeltsadia/assets/Affordable_Housing_Project2");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Load AOI from Assets
+//var Madina_Adentan = ee.FeatureCollection("projects/mabeltsadia/assets/Madina_Adentan");
+
+// 1. Define Area of Interest (AOI) from your asset
+var geometry = AHP.geometry();
+Map.centerObject(geometry); // Zoom level 6 for county-level view
+
+var aoi = geometry
+// 2. Load and Process DEM (SRTM 30m)
+var dem = ee.Image('USGS/SRTMGL1_003').clip(aoi);
+var elevation = dem.select('elevation');
+var slope = ee.Terrain.slope(dem);
+
+// 3. Load HydroSHEDS for Hydrological Modeling
+var flowDirection = ee.Image('WWF/HydroSHEDS/03VFDIR').clip(aoi);
+var flowAccumulation = ee.Image('WWF/HydroSHEDS/15ACC').clip(aoi);
+var hand = dem.subtract(
+  dem.reduceNeighborhood({
+    reducer: ee.Reducer.min(),
+    kernel: ee.Kernel.circle(1000, 'meters')
+  })
+).rename('hand');
+
+// 4. Load Precipitation Data (CHIRPS Daily, May 2025)
+var chirps = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+  .filterDate('2025-05-01', '2025-05-31')
+  .filterBounds(aoi);
+var rainfall = chirps.sum().clip(aoi);
+
+// 5. Load Sentinel-1 SAR for Flood Detection
+var sentinel1 = ee.ImageCollection('COPERNICUS/S1_GRD')
+  .filterBounds(aoi)
+  .filterDate('2025-05-01', '2025-05-17') // Pre-flood
+  .filter(ee.Filter.eq('instrumentMode', 'IW'))
+  .select('VV');
+var preFlood = sentinel1.mean().clip(aoi);
+
+var postFlood = ee.ImageCollection('COPERNICUS/S1_GRD')
+  .filterBounds(aoi)
+  .filterDate('2025-05-18', '2025-05-31') // Post-flood
+  .filter(ee.Filter.eq('instrumentMode', 'IW'))
+  .select('VV')
+  .mean()
+  .clip(aoi);
+
+var flood = preFlood.subtract(postFlood)
+  .lt(-3)
+  .rename('flood');
+
+// 6. Create a Composite Flood Risk Map
+var riskMap = ee.Image.cat([hand, rainfall, flood])
+  .reduce(ee.Reducer.sum())
+  .rename('flood_risk');
+var riskStats = riskMap.reduceRegion({
+  reducer: ee.Reducer.minMax(),
+  geometry: aoi,
+  scale: 30,
+  maxPixels: 1e9
+});
+var riskNormalized = riskMap
+  .subtract(ee.Number(riskStats.get('flood_risk_min')))
+  .divide(ee.Number(riskStats.get('flood_risk_max')).subtract(ee.Number(riskStats.get('flood_risk_min'))));
+
+// Classify the normalized risk into discrete categories (0-4)
+var riskClassified = riskNormalized
+  .where(riskNormalized.lte(0.2), 0) // Slight (<0.2)
+  .where(riskNormalized.gt(0.2).and(riskNormalized.lte(0.4)), 1) // Moderate (0.2-0.4)
+  .where(riskNormalized.gt(0.4).and(riskNormalized.lte(0.6)), 2) // High (0.4-0.6)
+  .where(riskNormalized.gt(0.6).and(riskNormalized.lte(0.8)), 3) // Very high (0.6-0.8)
+  .where(riskNormalized.gt(0.8), 4); // Severe (>0.8)
+
+// 7. Visualization Parameters
+var demVis = {min: 0, max: 1000, palette: ['blue', 'green', 'yellow', 'red']};
+var handVis = {min: 0, max: 20, palette: ['blue', 'cyan', 'yellow', 'red']};
+var rainfallVis = {min: 0, max: 500, palette: ['white', 'blue', 'darkblue']};
+var floodVis = {min: 0, max: 1, palette: ['white', 'blue']};
+var riskVis = {min: 0, max: 4, palette: ['#00FF00', '#FFFF00', '#FFA500', '#FF4500', '#FF0000']}; // Green, Yellow, Orange, OrangeRed, Red
+
+// 8. Add Layers to the Map
+Map.addLayer(aoi, {color: 'black'}, 'Madina_Adentan AOI');
+Map.addLayer(dem, demVis, 'Elevation (DEM)');
+Map.addLayer(hand, handVis, 'Height Above Nearest Drainage (HAND)');
+Map.addLayer(rainfall, rainfallVis, 'Total Rainfall (May 2025)');
+Map.addLayer(flood, floodVis, 'Detected Flood Extent');
+Map.addLayer(riskClassified, riskVis, 'Flood Risk Map (Classified)');
+
+// 9. Add Legend for Flood Risk Map
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px'
+  }
+});
+
+// Creating the legend title
+var legendTitle = ui.Label({
+  value: 'Flood Risk Level',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+  }
+});
+legend.add(legendTitle);
+
+// Function to create a row in the legend
+var makeRow = function(color, name) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: color, // Changed to accept hex directly
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  var description = ui.Label({
+    value: name,
+    style: {margin: '0 0 4px 6px'}
+  });
+  return ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+};
+
+// Palette and names for the legend
+var palette = ['#00FF00', '#FFFF00', '#FFA500', '#FF4500', '#FF0000']; // Green, Yellow, Orange, OrangeRed, Red
+var names = ['Slight (<0.2)', 'Moderate (0.2-0.4)', 'High (0.4-0.6)', 'Very high (0.6-0.8)', 'Severe (>0.8)'];
+
+// Add color and names to legend
+for (var i = 0; i < 5; i++) {
+  legend.add(makeRow(palette[i], names[i]));
+}
+
+// Add legend to map
+Map.add(legend);
+
+// 10. Export the Classified Flood Risk Map to Google Drive
+Export.image.toDrive({
+  image: riskClassified,
+  description: 'Madina_Flood_Risk_Map_2025',
+  scale: 30, // SRTM resolution
+  region: aoi,
+  maxPixels: 1e10,
+  folder: 'GEE_Exports'
+});
