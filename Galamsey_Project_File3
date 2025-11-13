@@ -65,12 +65,29 @@ function maskL8sr(image) {
 }
 
 // ---------------------------
-// INDEX FUNCTION (unchanged — still used for export)
+// INDEX FUNCTION (complete version — 10 indices)
 // ---------------------------
 function addIndices(image) {
   var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+  var evi = image.expression(
+    '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
+      'NIR': image.select('B5_p20'),
+      'RED': image.select('B4_p20'),
+      'BLUE': image.select('B2_p20')
+    }).rename('EVI');
   var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
+  var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
   var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
+  var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
+  var bsi = image.expression(
+    '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
+      'SWIR1': image.select('B6_p20'),
+      'RED': image.select('B4_p20'),
+      'NIR': image.select('B5_p20'),
+      'BLUE': image.select('B2_p20')
+    }).rename('BSI');
+  var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
+  var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
   var gpi = image.expression(
     '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
       'RED': image.select('B4_p20'),
@@ -80,7 +97,8 @@ function addIndices(image) {
       'GREEN': image.select('B3_p20'),
       'NIR': image.select('B5_p20')
     }).rename('GPI');
-  return image.addBands([ndvi, ndwi, ndbi, gpi]);
+
+  return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
 }
 
 // ---------------------------
@@ -143,29 +161,6 @@ for (var year = startYear; year <= endYear; year++) {
     false
   );
 }
-
-// // ---------------------------
-// // OPTIONAL: YEAR DROPDOWN MENU
-// // ---------------------------
-// var yearSelect = ui.Select({
-//   items: Array.from({length: endYear - startYear + 1}, (_, i) => (startYear + i).toString()),
-//   placeholder: 'Select Year',
-//   onChange: function(y) {
-//     var selected = composites[y];
-//     Map.layers().reset();
-//     Map.addLayer(aoi.style({color: 'yellow', width: 2, fillColor: '00000000'}), {}, 'AOI', true);
-//     Map.addLayer(
-//       ee.Image(selected),
-//       {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-//       y + ' Composite',
-//       true
-//     );
-//   }
-// });
-
-// var controlPanel = ui.Panel({
-//   widgets: [
-//     ui.Label('🗓 Select Composite Year',
 
 
 // // ========================================================
