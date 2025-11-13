@@ -1,0 +1,690 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var miningSites = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Point([-2.0670086208605176, 5.2339162736683535]),
+            {
+              "Mining": 1,
+              "system:index": "0"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.051344520213545, 5.260113144623516]),
+            {
+              "Mining": 1,
+              "system:index": "1"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0406156841539747, 5.25759179708547]),
+            {
+              "Mining": 1,
+              "system:index": "2"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.031868419130143, 5.290073198528427]),
+            {
+              "Mining": 1,
+              "system:index": "3"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.031480482921666, 5.370183440522479]),
+            {
+              "Mining": 1,
+              "system:index": "4"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.031308821544713, 5.354459709136442]),
+            {
+              "Mining": 1,
+              "system:index": "5"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.031308821544713, 5.354459709136442]),
+            {
+              "Mining": 1,
+              "system:index": "6"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0313290930631167, 5.354465188386041]),
+            {
+              "Mining": 1,
+              "system:index": "7"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0313290930631167, 5.354465188386041]),
+            {
+              "Mining": 1,
+              "system:index": "8"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0500568847204947, 5.335833043983634]),
+            {
+              "Mining": 1,
+              "system:index": "9"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.034349868729284, 5.328056247435332]),
+            {
+              "Mining": 1,
+              "system:index": "10"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0445637206579947, 5.319339281552019]),
+            {
+              "Mining": 1,
+              "system:index": "11"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.00722737117069, 5.318655592728565]),
+            {
+              "Mining": 1,
+              "system:index": "12"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.023363540604284, 5.3195956646650036]),
+            {
+              "Mining": 1,
+              "system:index": "13"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0255951385046744, 5.338738634985945]),
+            {
+              "Mining": 1,
+              "system:index": "14"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.016840408280065, 5.345660722765225]),
+            {
+              "Mining": 1,
+              "system:index": "15"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.026625106766393, 5.280709674984281]),
+            {
+              "Mining": 1,
+              "system:index": "16"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.031603286698034, 5.2750688668757295]),
+            {
+              "Mining": 1,
+              "system:index": "17"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.062759826615026, 5.252467349356656]),
+            {
+              "Mining": 1,
+              "system:index": "18"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9956694103278694, 4.976530317680356]),
+            {
+              "Mining": 1,
+              "system:index": "19"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.047156619816497, 5.165929501291809]),
+            {
+              "Mining": 1,
+              "system:index": "20"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0415990827376396, 5.162061426536979]),
+            {
+              "Mining": 1,
+              "system:index": "21"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0493882177168876, 5.171378958810727]),
+            {
+              "Mining": 1,
+              "system:index": "22"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0519845960433036, 5.167703251434385]),
+            {
+              "Mining": 1,
+              "system:index": "23"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.096027669013183, 5.1907089068894265]),
+            {
+              "Mining": 1,
+              "system:index": "24"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.098527487815063, 5.189159603478435]),
+            {
+              "Mining": 1,
+              "system:index": "25"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.097197112143676, 5.190334937448969]),
+            {
+              "Mining": 1,
+              "system:index": "26"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9619045665661483, 5.249811253849249]),
+            {
+              "Mining": 1,
+              "system:index": "27"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9610462596813827, 5.2566916030697675]),
+            {
+              "Mining": 1,
+              "system:index": "28"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9666681697765975, 5.266349604763689]),
+            {
+              "Mining": 1,
+              "system:index": "29"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9582567623058944, 5.265024843493619]),
+            {
+              "Mining": 1,
+              "system:index": "30"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.958943407813707, 5.27446904761428]),
+            {
+              "Mining": 1,
+              "system:index": "31"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.969328921119371, 5.277385933142498]),
+            {
+              "Mining": 1,
+              "system:index": "32"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9744880276488552, 5.28223324361815]),
+            {
+              "Mining": 1,
+              "system:index": "33"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9682223873900662, 5.286891133502623]),
+            {
+              "Mining": 1,
+              "system:index": "34"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.963930852966238, 5.285096354392326]),
+            {
+              "Mining": 1,
+              "system:index": "35"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0692344860281, 5.1255331728309805]),
+            {
+              "Mining": 1,
+              "system:index": "36"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.078246708318139, 5.125319454090859]),
+            {
+              "Mining": 1,
+              "system:index": "37"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0218763911274995, 5.046132126844364]),
+            {
+              "Mining": 1,
+              "system:index": "38"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0248268210438813, 5.044523693237198]),
+            {
+              "Mining": 1,
+              "system:index": "39"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.022160705283078, 5.044374071303644]),
+            {
+              "Mining": 1,
+              "system:index": "40"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.983140042801197, 5.039907851917786]),
+            {
+              "Mining": 1,
+              "system:index": "41"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.983140042801197, 5.039907851917786]),
+            {
+              "Mining": 1,
+              "system:index": "42"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9841685787561025, 5.0427717819820845]),
+            {
+              "Mining": 1,
+              "system:index": "43"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9998025738516034, 4.90492158255876]),
+            {
+              "Mining": 1,
+              "system:index": "44"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0866147407899294, 5.085450030588603]),
+            {
+              "Mining": 1,
+              "system:index": "45"
+            })]),
+    non_mined = 
+    /* color: #18d636 */
+    /* shown: false */
+    ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Point([-2.0377988850688933, 5.129832291266734]),
+            {
+              "Mining": 0,
+              "system:index": "0"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9801206624126433, 5.132567866400088]),
+            {
+              "Mining": 0,
+              "system:index": "1"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9801206624126433, 5.100424119334244]),
+            {
+              "Mining": 0,
+              "system:index": "2"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9636411702251433, 5.087429381165282]),
+            {
+              "Mining": 0,
+              "system:index": "3"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9615812337017058, 5.062123086019706]),
+            {
+              "Mining": 0,
+              "system:index": "4"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9581480061626433, 5.0491275764062635]),
+            {
+              "Mining": 0,
+              "system:index": "5"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9129552082039503, 5.165436974270605]),
+            {
+              "Mining": 0,
+              "system:index": "6"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9005955890633253, 5.199628898198947]),
+            {
+              "Mining": 0,
+              "system:index": "7"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.8655766681648878, 5.220826959360622]),
+            {
+              "Mining": 0,
+              "system:index": "8"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.8751897052742628, 5.176378591202471]),
+            {
+              "Mining": 0,
+              "system:index": "9"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9308079914070753, 5.192106833819472]),
+            {
+              "Mining": 0,
+              "system:index": "10"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9328679279305128, 5.170223954944076]),
+            {
+              "Mining": 0,
+              "system:index": "11"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9836796955086378, 5.229716255781253]),
+            {
+              "Mining": 0,
+              "system:index": "12"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9919194416023878, 5.24339184986527]),
+            {
+              "Mining": 0,
+              "system:index": "13"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0495976642586378, 5.242024303923722]),
+            {
+              "Mining": 0,
+              "system:index": "14"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0921696857430128, 5.215356560451115]),
+            {
+              "Mining": 0,
+              "system:index": "15"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.1210087970711378, 5.16612083086687]),
+            {
+              "Mining": 0,
+              "system:index": "16"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.1127690509773878, 5.157914503034524]),
+            {
+              "Mining": 0,
+              "system:index": "17"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0935429767586378, 5.177746280017843]),
+            {
+              "Mining": 0,
+              "system:index": "18"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0962895587898878, 5.157914503034524]),
+            {
+              "Mining": 0,
+              "system:index": "19"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0853032306648878, 5.145604812404243]),
+            {
+              "Mining": 0,
+              "system:index": "20"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0708836750008253, 5.168172396227555]),
+            {
+              "Mining": 0,
+              "system:index": "21"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0798100666023878, 5.183900843065962]),
+            {
+              "Mining": 0,
+              "system:index": "22"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.1113957599617628, 5.082000962643712]),
+            {
+              "Mining": 0,
+              "system:index": "23"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.1402348712898878, 5.107306476616879]),
+            {
+              "Mining": 0,
+              "system:index": "24"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0976628498055128, 5.090208265511099]),
+            {
+              "Mining": 0,
+              "system:index": "25"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0853032306648878, 5.0587463706258715]),
+            {
+              "Mining": 0,
+              "system:index": "26"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0626439289070753, 5.056694454690084]),
+            {
+              "Mining": 0,
+              "system:index": "27"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0441045001961378, 5.05806239936991]),
+            {
+              "Mining": 0,
+              "system:index": "28"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0104588703133253, 5.0813170160163885]),
+            {
+              "Mining": 0,
+              "system:index": "29"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9946660236336378, 5.147656444063196]),
+            {
+              "Mining": 0,
+              "system:index": "30"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0083989337898878, 5.159282231712348]),
+            {
+              "Mining": 0,
+              "system:index": "31"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0022191242195753, 5.171591657062589]),
+            {
+              "Mining": 0,
+              "system:index": "32"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9960393146492628, 5.189371515426037]),
+            {
+              "Mining": 0,
+              "system:index": "33"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0070256427742628, 5.203047988671715]),
+            {
+              "Mining": 0,
+              "system:index": "34"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0221318439461378, 5.188003851781499]),
+            {
+              "Mining": 0,
+              "system:index": "35"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0372380451180128, 4.9657196852857615]),
+            {
+              "Mining": 0,
+              "system:index": "36"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0015324787117628, 4.9274107507760005]),
+            {
+              "Mining": 0,
+              "system:index": "37"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0578374103523878, 4.9356199946586345]),
+            {
+              "Mining": 0,
+              "system:index": "38"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0640172199227003, 5.01360272201291]),
+            {
+              "Mining": 0,
+              "system:index": "39"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0413579181648878, 5.022494900474819]),
+            {
+              "Mining": 0,
+              "system:index": "40"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9891728595711378, 5.019074846177001]),
+            {
+              "Mining": 0,
+              "system:index": "41"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9733800128914503, 5.036174938132837]),
+            {
+              "Mining": 0,
+              "system:index": "42"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0063389972664503, 5.308900252257644]),
+            {
+              "Mining": 0,
+              "system:index": "43"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9905461505867628, 5.33009458844249]),
+            {
+              "Mining": 0,
+              "system:index": "44"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-1.9520940021492628, 5.306849148755696]),
+            {
+              "Mining": 0,
+              "system:index": "45"
+            }),
+        ee.Feature(
+            ee.Geometry.Point([-2.0807025477720553, 4.98832586119276]),
+            {
+              "Mining": 0,
+              "system:index": "46"
+            })]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// ============================================================================
+// ACTIVE MINING DETECTION (2010–2024)
+// Landsat 5, 7, 8 Surface Reflectance - Dry season composites
+// Harmonized bands + NDVI + NDMI
+// ============================================================================
+
+// 1. INPUT DATA
+var minedPoints = miningSites.map(function(f) { return f.set('class', 1); });
+var nonMinedPoints = non_mined.map(function(f) { return f.set('class', 0); });
+var labeledPoints = minedPoints.merge(nonMinedPoints);
+print('Total labeled points:', labeledPoints.size());
+
+var AOI = ee.FeatureCollection('projects/mabeltsadia/assets/Tarkwa_Nsuaem_WR');
+
+// -----------------------------------------------------------------------------
+// 2. FUNCTION: Harmonize Landsat Sensors (L5, L7, L8)
+// -----------------------------------------------------------------------------
+function harmonizeLandsat(img) {
+  var sensor = ee.String(img.get('SPACECRAFT_ID'));
+  
+  // Landsat 5 and 7 bands
+  var l57 = img.select(['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'], 
+                       ['Blue','Green','Red','NIR','SWIR1','SWIR2']);
+  // Landsat 8 bands
+  var l8 = img.select(['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','SR_B7'], 
+                      ['Blue','Green','Red','NIR','SWIR1','SWIR2']);
+  
+  // Choose proper mapping
+  var optical = ee.Image(ee.Algorithms.If(sensor.equals('LANDSAT_8'), l8, l57))
+      .multiply(0.0000275).add(-0.2); // Apply scaling
+  
+  return optical.copyProperties(img, img.propertyNames());
+}
+
+// -----------------------------------------------------------------------------
+// 3. FUNCTION: Get Annual Landsat Composite
+// -----------------------------------------------------------------------------
+function getLandsatComposite(year) {
+  var start = ee.Date.fromYMD(year, 12, 1);
+  var end = ee.Date.fromYMD(year + 1, 3, 31);
+
+  var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+    .filterDate(start, end)
+    .filterBounds(AOI)
+    .map(harmonizeLandsat);
+
+  var l7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+    .filterDate(start, end)
+    .filterBounds(AOI)
+    .map(harmonizeLandsat);
+
+  var l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+    .filterDate(start, end)
+    .filterBounds(AOI)
+    .map(harmonizeLandsat);
+
+  // Merge all sensors
+  var merged = l5.merge(l7).merge(l8);
+  
+  // Median composite
+  var composite = merged.median().clip(AOI);
+
+  // Add indices (NDVI & NDMI)
+  composite = composite
+    .addBands(composite.normalizedDifference(['NIR','Red']).rename('NDVI'))
+    .addBands(composite.normalizedDifference(['SWIR1','NIR']).rename('NDMI'));
+
+  return composite;
+}
+
+// -----------------------------------------------------------------------------
+// 4. YEARLY LOOP (2010–2024)
+// -----------------------------------------------------------------------------
+var years = ee.List.sequence(2010, 2024);
+var yearList = years.getInfo();
+
+// Bands to use for classification
+var bands = ['Blue','Green','Red','NIR','SWIR1','SWIR2','NDVI','NDMI'];
+
+for (var i = 0; i < yearList.length; i++) {
+  var y = yearList[i];
+  print('Processing year:', y);
+
+  var composite = getLandsatComposite(y);
+
+  // Sample training data
+  var training = composite.select(bands).sampleRegions({
+    collection: labeledPoints,
+    properties: ['class'],
+    scale: 30,
+    tileScale: 4
+  });
+
+  // Train Random Forest classifier
+  var rf = ee.Classifier.smileRandomForest(100).train({
+    features: training,
+    classProperty: 'class',
+    inputProperties: bands
+  });
+
+  // Classify image
+  var classified = composite.select(bands).classify(rf);
+  var activeMining = classified.eq(1).rename('ActiveMining_' + y);
+
+  // Add to map (optional)
+  Map.addLayer(activeMining.selfMask(),
+    {palette:['red']}, 'Active Mining ' + y, false);
+
+  // Export to Google Drive
+  Export.image.toDrive({
+    image: activeMining,
+    description: 'Tarkwa_ActiveMining_' + y,
+    folder: 'GEE_MiningInference',
+    fileNamePrefix: 'Tarkwa_ActiveMining_' + y,
+    region: AOI.geometry(),
+    scale: 30,
+    crs: 'EPSG:32630',
+    maxPixels: 1e13
+  });
+}
+
+print('✅ Landsat-only active mining maps (2010–2024) ready for export.');
