@@ -1,6 +1,6 @@
 /**** Start of imports. If edited, may not auto-convert in the playground. ****/
 var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_WR"),
-    minedPolygons = /* color: #d62c00 */ee.FeatureCollection(
+    MiningSamples25 = /* color: #d62c00 */ee.FeatureCollection(
         [ee.Feature(
             ee.Geometry.Polygon(
                 [[[-2.1004393183079406, 5.57136028076908],
@@ -128,6 +128,14 @@ for (var year = startYear; year <= endYear; year++) {
   // Store in dictionary
   composites[year] = filled;
 
+// --- COMPUTE AND STORE INDICES ---
+if (typeof composites_with_indices === 'undefined') {
+  var composites_with_indices = {};  // initialize dictionary first time
+}
+
+var indices = addIndices(filled);
+composites_with_indices[year] = indices;  // store for later use
+
   // Export composite
   Export.image.toDrive({
     image: composite,
@@ -162,204 +170,266 @@ for (var year = startYear; year <= endYear; year++) {
   );
 }
 
+// =====================================================
+// VISUALIZE 2025 INDICES (All 10)
+// =====================================================
 
-// // ========================================================
-// // LEGEND PANEL (scrollable)
-// // ========================================================
-// var legends = ui.Panel({
-//   layout: ui.Panel.Layout.flow('vertical'),
-//   style: {width: '160px', padding: '8px'}
-// });
+// Visualization parameters for all indices
+var vis = {
+  NDVI: {min: 0, max: 1, palette: ['red', 'yellow', 'green']},
+  EVI: {min: 0, max: 1, palette: ['brown', 'yellow', 'darkgreen']},
+  NDWI: {min: -1, max: 1, palette: ['brown','blue']},
+  MNDWI: {min: -1, max: 1, palette: ['brown','cyan']},
+  NDBI: {min: -1, max: 1, palette: ['blue','white','brown']},
+  NBR: {min: -1, max: 1, palette: ['red','white','green']},
+  BSI: {min: -1, max: 1, palette: ['green','yellow','brown']},
+  IOI: {min: 0, max: 3, palette: ['blue','white','red']},
+  CMR: {min: 0, max: 2, palette: ['purple','white','orange']},
+  GPI: {min: 0, max: 3, palette: ['blue','white','red']}
+};
 
-// legends.add(ui.Label({
-//   value: 'Spectral Indices (2025)',
-//   style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
-// }));
+// Get indices for 2025
+var indices2025 = ee.Image(composites_with_indices[2025]);
 
-// Object.keys(vis).forEach(function (key) {
-//   legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
-//   var colorBar = ui.Thumbnail({
-//     image: ee.Image.pixelLonLat().select(0)
-//             .multiply(vis[key].max - vis[key].min)
-//             .add(vis[key].min),
-//     params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
-//             min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
-//     style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
-//   });
-//   legends.add(colorBar);
-// });
+// Add each index to the map as a layer (unchecked by default)
+Object.keys(vis).forEach(function (idx) {
+  Map.addLayer(indices2025.select(idx), vis[idx], idx + ' (2025)', false);
+});
 
-// // === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
-// var scrollPanel = ui.Panel(
-//   // widgets
-//   [ legends ],
-//   // layout
-//   ui.Panel.Layout.flow('vertical'),
-//   // style
-//   {
-//     position: 'bottom-left',
-//     width: '180px',
-//     height: '250px',         // fixed height -> scrollbar appears when needed
-//     padding: '4px',
-//     backgroundColor: 'rgba(255,255,255,0.8)'
-//   }
-// );
+// Optional: add the RGB composite layer for context
+var rgbVis = {bands: ['B4_p20', 'B3_p20', 'B2_p20'], min: 0, max: 0.3};
+Map.addLayer(indices2025, rgbVis, '2025 RGB Composite', true);
 
-// Map.add(scrollPanel);
+// Center map on AOI if not done already
+Map.centerObject(aoi);
 
+// ========================================================
+// LEGEND PANEL (scrollable)
+// ========================================================
+var legends = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical'),
+  style: {width: '160px', padding: '8px'}
+});
 
+legends.add(ui.Label({
+  value: 'Spectral Indices (2025)',
+  style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
+}));
 
-// // =====================================================
-// // STEP 3A — Label Training Samples
-// // =====================================================
+Object.keys(vis).forEach(function (key) {
+  legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
+  var colorBar = ui.Thumbnail({
+    image: ee.Image.pixelLonLat().select(0)
+            .multiply(vis[key].max - vis[key].min)
+            .add(vis[key].min),
+    params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
+            min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
+    style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
+  });
+  legends.add(colorBar);
+});
 
-// // Load your mined polygons
-// print('Mined polygons loaded:', minedPolygons.size());
+// === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
+var scrollPanel = ui.Panel(
+  // widgets
+  [ legends ],
+  // layout
+  ui.Panel.Layout.flow('vertical'),
+  // style
+  {
+    position: 'bottom-left',
+    width: '180px',
+    height: '250px',         // fixed height -> scrollbar appears when needed
+    padding: '4px',
+    backgroundColor: 'rgba(255,255,255,0.8)'
+  }
+);
 
-// // Give mined label = 1
-// var minedSamples = minedPolygons.map(function(f){ return f.set('class', 1); });
-
-// // Define AOI (same one from step 1)
-// var AOI = aoi;  // reuse from your existing script
-
-// // Buffer mined areas to exclude near zones for non-mined sampling
-// var minedBuffer = minedSamples.geometry().buffer(200);
-
-// // Generate random non-mined points outside mined zones
-// var nonMinedSamples = ee.FeatureCollection.randomPoints({
-//   region: AOI.geometry().difference(minedBuffer),
-//   points: 100, // adjust number based on your AOI size
-//   seed: 123
-// }).map(function(f){ return f.set('class', 0); });
-
-// // Merge mined + non-mined
-// var labeledSamples = minedSamples.merge(nonMinedSamples);
-// print('Total labeled samples:', labeledSamples.size());
-
-// Map.addLayer(minedSamples, {color: 'red'}, 'Mined Samples');
-// Map.addLayer(nonMinedSamples, {color: 'green'}, 'Non-Mined Samples');
-
-
-
-// // // =====================================================
-// // // STEP 3B/3C — Extract 2025 Composite/ Add Indices to 2025 Composite
-// // // =====================================================
-// var composite2025 = ee.Image(composites[2025]);
-// var composite2025_with_indices = ee.Image(composites_with_indices[2025]);
+Map.add(scrollPanel);
 
 
 
-// // =====================================================
-// // STEP 3D — Sample for Classifier
-// // =====================================================
+// =====================================================
+// STEP 3 — Active Mining Detection (All Years)
+// =====================================================
 
-// var bands = ['B2_p20','B3_p20','B4_p20','B5_p20','B6_p20','B7_p20','NDVI','NDWI','NDBI','GPI'];
+// ---------------------------
+// USER PARAMETERS
+// ---------------------------
+var startYear = 2010;
+var endYear = 2025;
+var AOI = aoi; // reuse AOI from previous steps
+var bufferDistance = 200; // buffer around mined samples to avoid non-mined overlap
+var nonMinedPointsCount = 100; // number of non-mined points per year
 
-// var training = composite2025_with_indices.select(bands).sampleRegions({
-//   collection: labeledSamples,
-//   properties: ['class'],
-//   scale: 30
-// });
+// Bands to use for classification
+var bands = ['B2_p20','B3_p20','B4_p20','B5_p20','B6_p20','B7_p20','NDVI','NDWI','NDBI','GPI'];
 
-// print('Training samples:', training.size());
+// Random Forest parameters
+var numTrees = 100;
 
+// ---------------------------
+// Mined Samples Dictionary (one per year)
+// Replace with your actual FeatureCollection names
+// ---------------------------
+var minedSamplesDict = {
+  2025: MiningSamples25,
+  //2024: MiningSamples24,
+  //2023: MiningSamples23,
+  // ... add all years you have
+};
 
+// ---------------------------
+// Visualization Parameters
+// ---------------------------
+var visParams = {min:0, max:1, palette:['#00FF00','#FF0000']}; // green = non-mined, red = mined
 
-// // =====================================================
-// // STEP 3E — Train/Test Split
-// // =====================================================
-// var withRandom = training.randomColumn('random', 42);
-// var trainSet = withRandom.filter(ee.Filter.lt('random', 0.7));
-// var testSet  = withRandom.filter(ee.Filter.gte('random', 0.7));
+// ---------------------------
+// Loop through each year
+// ---------------------------
+for (var year = startYear; year <= endYear; year++) {
+  
+  // Check if mined sample exists
+  if (!(year in minedSamplesDict)) {
+    print('No mined samples for year:', year);
+    continue;
+  }
+  
+  // Load mined samples and assign class = 1
+  var minedSamples = minedSamplesDict[year].map(function(f){
+    return f.set('class', 1);
+  });
+  
+  // Buffer mined areas
+  var minedBuffer = minedSamples.geometry().buffer(bufferDistance);
+  
+  // Generate random non-mined points
+  var nonMinedSamples = ee.FeatureCollection.randomPoints({
+    region: AOI.geometry().difference(minedBuffer),
+    points: nonMinedPointsCount,
+    seed: 42 + year // different seed per year
+  }).map(function(f){ return f.set('class', 0); });
+  
+  // Merge mined + non-mined
+  var labeledSamples = minedSamples.merge(nonMinedSamples);
+  
+  // --------------------------------------
+  // Get composite with indices for this year
+  // composites_with_indices should exist from previous steps
+  // --------------------------------------
+  if (!(year in composites_with_indices)) {
+    print('No composite for year:', year);
+    continue;
+  }
+  var composite = composites_with_indices[year];
+  
+  // --------------------------------------
+  // Sample for classifier
+  // --------------------------------------
+  var training = composite.select(bands).sampleRegions({
+    collection: labeledSamples,
+    properties: ['class'],
+    scale: 30
+  });
+  
+  // Train/test split
+  var withRandom = training.randomColumn('random', 42);
+  var trainSet = withRandom.filter(ee.Filter.lt('random', 0.7));
+  var testSet  = withRandom.filter(ee.Filter.gte('random', 0.7));
+  
+  print('Year:', year, 'Train size:', trainSet.size(), 'Test size:', testSet.size());
+  
+  // --------------------------------------
+  // Train Random Forest classifier
+  // --------------------------------------
+  var rf = ee.Classifier.smileRandomForest(numTrees).setOutputMode('CLASSIFICATION');
+  var trainedRF = rf.train({
+    features: trainSet,
+    classProperty: 'class',
+    inputProperties: bands
+  });
+  print('✅ Random Forest trained for year', year);
+  
+  // --------------------------------------
+  // Evaluate classifier
+  // --------------------------------------
+  var validated = testSet.classify(trainedRF);
+  var cm = validated.errorMatrix('class','classification');
+  print('=== CONFUSION MATRIX (Year ' + year + ') ===');
+  print(cm);
+  print('Accuracy:', cm.accuracy());
+  print('Kappa:', cm.kappa());
+  
+  // --------------------------------------
+  // Classify composite (Active Mining Map)
+  // --------------------------------------
+  var classified = composite.select(bands).classify(trainedRF);
+  
+  // Add layer to map (unchecked by default)
+  Map.addLayer(classified.clip(AOI), visParams, 'Active Mining ' + year, false);
+  
+  // --------------------------------------
+  // Optional export
+  // --------------------------------------
+  Export.image.toDrive({
+    image: classified.clip(AOI),
+    description: 'Active_Mining_' + year + '_RF',
+    folder: 'GEE_Exports',
+    fileNamePrefix: 'Active_Mining_' + year + '_RF',
+    region: AOI.geometry(),
+    scale: 30,
+    maxPixels: 1e13
+  });
+  
+}
 
-// print('Train set size:', trainSet.size());
-// print('Test set size:', testSet.size());
+// =====================================================
+// STEP 3 — LEGEND (Reusable for all years)
+// =====================================================
+var legendPanel = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    border: '1px solid black',
+    width: '160px'
+  }
+});
 
+// Legend title
+var legendTitle = ui.Label({
+  value: 'Active Mining',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '14px',
+    margin: '0 0 8px 0',
+    textAlign: 'center'
+  }
+});
+legendPanel.add(legendTitle);
 
+// Function to create legend entries
+function makeLegendRow(color, name) {
+  var colorBox = ui.Label({
+    style: {backgroundColor: color, padding: '8px', margin: '0 0 4px 0'}
+  });
+  var description = ui.Label({
+    value: name,
+    style: { margin: '0 0 4px 6px', fontSize: '13px' }
+  });
+  return ui.Panel([colorBox, description], ui.Panel.Layout.Flow('horizontal'));
+}
 
-// // =====================================================
-// // STEP 3F — Train Random Forest Classifier
-// // =====================================================
-// var rf = ee.Classifier.smileRandomForest({
-//   numberOfTrees: 100,
-//   variablesPerSplit: null,
-//   minLeafPopulation: 1
-// }).setOutputMode('CLASSIFICATION');
+// Add classes
+legendPanel.add(makeLegendRow('#00FF00', 'Non-mined'));
+legendPanel.add(makeLegendRow('#FF0000', 'Mined'));
 
-// var trainedRF = rf.train({
-//   features: trainSet,
-//   classProperty: 'class',
-//   inputProperties: bands
-// });
+// Add to map
+Map.add(legendPanel);
 
-// print('✅ Random Forest training completed!');
+// Center map on AOI
+Map.centerObject(AOI);
 
-
-
-// // =====================================================
-// // STEP 3G — Model Evaluation
-// // =====================================================
-// var validated = testSet.classify(trainedRF);
-// var cm = validated.errorMatrix('class', 'classification');
-
-// print('=== CONFUSION MATRIX ===');
-// print(cm);
-// print('Accuracy:', cm.accuracy());
-// print('Kappa:', cm.kappa());
-
-
-
-// // =====================================================
-// // STEP 3H — Feature Importance (Optional)
-// // =====================================================
-// print('Feature Importance:', ee.Dictionary(trainedRF.explain().get('importance')));
-
-
-
-// // =====================================================
-// // STEP 3I — Inference / Active Mining Prediction
-// // =====================================================
-// var classified2025 = composite2025_with_indices.select(bands).classify(trainedRF);
-
-// var visParams = {
-//   min: 0, max: 1,
-//   palette: ['#00FF00', '#FF0000'], // green = non-mined, red = mined
-// };
-
-// Map.addLayer(classified2025.clip(AOI), visParams, 'Active Mining (2025)', false);
-
-
-
-// // =====================================================
-// // STEP 3J — Export Classified Map (Optional)
-// // =====================================================
-// Export.image.toDrive({
-//   image: classified2025.clip(AOI),
-//   description: 'Active_Mining_2025_RF',
-//   folder: 'GEE_Exports',
-//   fileNamePrefix: 'Active_Mining_2025_RF',
-//   region: AOI.geometry(),
-//   scale: 30,
-//   maxPixels: 1e13
-// });
-
-
-
-
-// // =====================================================
-// // STEP 3K — Add Legend for Classified Map
-// // =====================================================
-
-// // Create a panel to hold the legend
-// var legendPanel = ui.Panel({
-//   style: {
-//     position: 'bottom-left',
-//     padding: '8px 15px',
-//     backgroundColor: 'rgba(255, 255, 255, 0.9)',
-//     border: '1px solid black',
-//     width: '160px'
-//   }
-// });
 
 // // Legend title
 // var legendTitle = ui.Label({
@@ -400,4 +470,3 @@ for (var year = startYear; year <= endYear; year++) {
 // // Add to the map
 // Map.add(legendPanel);
 
-Map.addLayer(minedPolygons.geometry())
