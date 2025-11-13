@@ -1,6 +1,9 @@
 /**** Start of imports. If edited, may not auto-convert in the playground. ****/
 var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_WR"),
-    MiningSamples25 = /* color: #d62c00 */ee.FeatureCollection(
+    MiningSamples25 = 
+    /* color: #d62c00 */
+    /* shown: false */
+    ee.FeatureCollection(
         [ee.Feature(
             ee.Geometry.Polygon(
                 [[[-2.1004393183079406, 5.57136028076908],
@@ -20,6 +23,168 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
             {
               "class": 1,
               "system:index": "1"
+            })]),
+    MiningSamples24 = /* color: #d63000 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1097105869676946, 5.493630556125385],
+                  [-2.108723534050214, 5.492968423231138],
+                  [-2.1084660419847845, 5.493822788118144],
+                  [-2.109431637230146, 5.494484920062802]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples23 = /* color: #98ff00 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1095250561798817, 5.493634884961384],
+                  [-2.108988614376903, 5.493293139045805],
+                  [-2.1087525799835927, 5.493805757845646],
+                  [-2.1093533948029286, 5.494083426178045]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples22 = /* color: #0b4a8b */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1095250561798817, 5.493763039629172],
+                  [-2.108988614376903, 5.493421293787129],
+                  [-2.10881695299995, 5.49393391247668],
+                  [-2.1093533948029286, 5.494126144371541]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples21 = /* color: #ffc82d */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1096108868683583, 5.493677603187042],
+                  [-2.1090100720490224, 5.493421293787129],
+                  [-2.1087096646393544, 5.493955271579172],
+                  [-2.1093533948029286, 5.494126144371541]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples20 = /* color: #00ffff */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1096108868683583, 5.49369896229872],
+                  [-2.1090529873932606, 5.493399934665489],
+                  [-2.1093533948029286, 5.494040707981483]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples19 = /* color: #bf04c2 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1094821408356434, 5.493784398737797],
+                  [-2.1089027836884267, 5.4934853711474405],
+                  [-2.1088598683441884, 5.49393391247668],
+                  [-2.1093533948029286, 5.494190221656042]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples18 = /* color: #ff0000 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.109546513852001, 5.493613525847391],
+                  [-2.108945699032665, 5.493399934665489],
+                  [-2.1087311223114735, 5.493827116952731],
+                  [-2.1093748524750477, 5.494104785275168]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples17 = /* color: #00ff00 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.109589429196239, 5.493634884961384],
+                  [-2.1089027836884267, 5.493314498171274],
+                  [-2.1087525799835927, 5.4938484760590525],
+                  [-2.1093104794586903, 5.494211580749336]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples16 = /* color: #0000ff */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1096323445404774, 5.493741680519785],
+                  [-2.1090100720490224, 5.493421293787129],
+                  [-2.1087096646393544, 5.49393391247668],
+                  [-2.109417767819286, 5.494211580749336]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples15 = /* color: #999900 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.109589429196239, 5.493720321409634],
+                  [-2.1090315297211415, 5.493357216419909],
+                  [-2.1093533948029286, 5.494126144371541]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples14 = /* color: #009999 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.109589429196239, 5.493634884961384],
+                  [-2.108988614376903, 5.493250420792577],
+                  [-2.108774037655712, 5.493891194269393],
+                  [-2.109396310147167, 5.494147503467138]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples13 = /* color: #ff00ff */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1089027836884267, 5.493357216419909],
+                  [-2.108774037655712, 5.4938484760590525],
+                  [-2.109396310147167, 5.4940620670801446]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples12 = /* color: #ff9999 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.10956797152412, 5.493677603187042],
+                  [-2.1089027836884267, 5.493378575543087],
+                  [-2.1088813260163075, 5.493891194269393],
+                  [-2.109396310147167, 5.494232939841878]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples11 = /* color: #99ff99 */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.109439225491405, 5.493592166732647],
+                  [-2.1089027836884267, 5.493293139045805],
+                  [-2.1088384106720692, 5.49393391247668],
+                  [-2.1093748524750477, 5.4941688625619705]]]),
+            {
+              "class": 1,
+              "system:index": "0"
+            })]),
+    MiningSamples10 = /* color: #9999ff */ee.FeatureCollection(
+        [ee.Feature(
+            ee.Geometry.Polygon(
+                [[[-2.1095035985077626, 5.493656244074588],
+                  [-2.108924241360546, 5.493335857295979],
+                  [-2.108774037655712, 5.493912553373424],
+                  [-2.1093533948029286, 5.494147503467138]]]),
+            {
+              "class": 1,
+              "system:index": "0"
             })]);
 /***** End of imports. If edited, may not auto-convert in the playground. *****/
 // ========================================================
@@ -274,8 +439,21 @@ var numTrees = 100;
 // ---------------------------
 var minedSamplesDict = {
   2025: MiningSamples25,
-  //2024: MiningSamples24,
-  //2023: MiningSamples23,
+  2024: MiningSamples24,
+  2023: MiningSamples23,
+  2022: MiningSamples22,
+  2021: MiningSamples21,
+  2020: MiningSamples20,
+  2019: MiningSamples19,
+  2018: MiningSamples18,
+  2017: MiningSamples17,
+  2016: MiningSamples16,
+  2015: MiningSamples15,
+  2014: MiningSamples14,
+  2013: MiningSamples13,
+  2012: MiningSamples12,
+  2011: MiningSamples11,
+  2010: MiningSamples10,
   // ... add all years you have
 };
 
@@ -348,7 +526,7 @@ for (var year = startYear; year <= endYear; year++) {
     classProperty: 'class',
     inputProperties: bands
   });
-  print('✅ Random Forest trained for year', year);
+  print('Random Forest trained for year', year);
   
   // --------------------------------------
   // Evaluate classifier
