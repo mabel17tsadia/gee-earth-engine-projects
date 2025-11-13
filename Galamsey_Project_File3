@@ -431,42 +431,4 @@ Map.add(legendPanel);
 Map.centerObject(AOI);
 
 
-// // Legend title
-// var legendTitle = ui.Label({
-//   value: 'Active Mining (2025)',
-//   style: {
-//     fontWeight: 'bold',
-//     fontSize: '14px',
-//     margin: '0 0 8px 0',
-//     textAlign: 'center'
-//   }
-// });
-// legendPanel.add(legendTitle);
-
-// // Function to create legend entries
-// function makeLegendRow(color, name) {
-//   var colorBox = ui.Label({
-//     style: {
-//       backgroundColor: color,
-//       padding: '8px',
-//       margin: '0 0 4px 0'
-//     }
-//   });
-//   var description = ui.Label({
-//     value: name,
-//     style: { margin: '0 0 4px 6px', fontSize: '13px' }
-//   });
-
-//   return ui.Panel({
-//     widgets: [colorBox, description],
-//     layout: ui.Panel.Layout.Flow('horizontal')
-//   });
-// }
-
-// // Add classes
-// legendPanel.add(makeLegendRow('#00FF00', 'Non-mined'));
-// legendPanel.add(makeLegendRow('#FF0000', 'Mined'));
-
-// // Add to the map
-// Map.add(legendPanel);
 
