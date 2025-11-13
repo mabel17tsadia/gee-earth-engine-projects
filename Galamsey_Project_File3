@@ -206,6 +206,23 @@ var folderName = 'Galamsey_Project_BDG';
 var startYear = 2010;
 var endYear = 2025;
 
+
+function harmonizeLandsat(img) {
+  var sensor = ee.String(img.get('SPACECRAFT_ID'));
+  
+  var l57 = img.select(['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','SR_B7'], 
+                       ['Blue','Green','Red','NIR','SWIR1','SWIR2']);
+  var l8 = img.select(['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','SR_B7'], 
+                      ['Blue','Green','Red','NIR','SWIR1','SWIR2']);
+  
+  return ee.Image(ee.Algorithms.If(sensor.equals('LANDSAT_8'), l8, l57))
+      .multiply(0.0000275)
+      .add(-0.2)
+      .copyProperties(img, img.propertyNames());
+}
+
+
+
 // ---------------------------
 // LOAD LANDSAT 8 COLLECTION
 // ---------------------------
@@ -231,36 +248,36 @@ function maskL8sr(image) {
 
 // ---------------------------
 // INDEX FUNCTION (complete version — 10 indices)
-// ---------------------------
+// // ---------------------------
 function addIndices(image) {
-  var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+  var ndvi = image.normalizedDifference(['NIR', 'Red']).rename('NDVI');
   var evi = image.expression(
     '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
-      'NIR': image.select('B5_p20'),
-      'RED': image.select('B4_p20'),
-      'BLUE': image.select('B2_p20')
+      'NIR': image.select('NIR'),
+      'RED': image.select('Red'),
+      'BLUE': image.select('Blue')
     }).rename('EVI');
-  var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
-  var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
-  var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
-  var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
+  var ndwi = image.normalizedDifference(['Green','NIR']).rename('NDWI');
+  var mndwi = image.normalizedDifference(['Green','SWIR1']).rename('MNDWI');
+  var ndbi = image.normalizedDifference(['SWIR1','NIR']).rename('NDBI');
+  var nbr = image.normalizedDifference(['NIR','SWIR2']).rename('NBR');
   var bsi = image.expression(
     '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
-      'SWIR1': image.select('B6_p20'),
-      'RED': image.select('B4_p20'),
-      'NIR': image.select('B5_p20'),
-      'BLUE': image.select('B2_p20')
+      'SWIR1': image.select('SWIR1'),
+      'RED': image.select('Red'),
+      'NIR': image.select('NIR'),
+      'BLUE': image.select('Blue')
     }).rename('BSI');
-  var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
-  var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
+  var ioi = image.select('Red').divide(image.select('Blue')).rename('IOI');
+  var cmr = image.select('SWIR1').divide(image.select('SWIR2')).rename('CMR');
   var gpi = image.expression(
     '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
-      'RED': image.select('B4_p20'),
-      'BLUE': image.select('B2_p20'),
-      'SWIR1': image.select('B6_p20'),
-      'SWIR2': image.select('B7_p20'),
-      'GREEN': image.select('B3_p20'),
-      'NIR': image.select('B5_p20')
+      'RED': image.select('Red'),
+      'BLUE': image.select('Blue'),
+      'SWIR1': image.select('SWIR1'),
+      'SWIR2': image.select('SWIR2'),
+      'GREEN': image.select('Green'),
+      'NIR': image.select('NIR')
     }).rename('GPI');
 
   return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
@@ -278,17 +295,26 @@ for (var year = startYear; year <= endYear; year++) {
   var start = ee.Date.fromYMD(year - 1, 1, 1);
   var end   = ee.Date.fromYMD(year + 1, 12, 31);
 
-  var l8_filtered = l8.filterBounds(aoi)
-                      .filterDate(start, end)
-                      .map(maskL8sr);
+  var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+             .filterDate(start, end)
+             .filterBounds(aoi)
+             .map(harmonizeLandsat);
 
-  print('Year ' + year + ' image count:', l8_filtered.size());
+  var l7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+             .filterDate(start, end)
+             .filterBounds(aoi)
+             .map(harmonizeLandsat);
 
-  if (l8_filtered.size().getInfo() === 0) continue;
+  var l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+             .filterDate(start, end)
+             .filterBounds(aoi)
+             .map(harmonizeLandsat);
 
-  // Create composite
-  var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
-  var filled = composite.focal_mean({radius: 90, units: 'meters'}).blend(composite);
+  var merged = l5.merge(l7).merge(l8);
+  if (merged.size().getInfo() === 0) continue; // skip if no images
+
+  var composite = merged.median().clip(aoi);
+  var filled = composite.focal_mean({radius:90, units:'meters'}).blend(composite);
 
   // Store in dictionary
   composites[year] = filled;
@@ -326,13 +352,13 @@ composites_with_indices[year] = indices;  // store for later use
     maxPixels: 1e13
   });
 
-  // Add composite layer to map (visualization only)
   Map.addLayer(
-    filled,
-    {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-    year + ' Composite',
-    false
-  );
+  composite,
+  {bands:['Red','Green','Blue'], min:0, max:0.3},
+  year + ' Composite',
+  false
+);
+
 }
 
 // =====================================================
@@ -362,7 +388,8 @@ Object.keys(vis).forEach(function (idx) {
 });
 
 // Optional: add the RGB composite layer for context
-var rgbVis = {bands: ['B4_p20', 'B3_p20', 'B2_p20'], min: 0, max: 0.3};
+// var rgbVis = {bands: ['B4_p20', 'B3_p20', 'B2_p20'], min: 0, max: 0.3};
+var rgbVis = {bands: ['Red','Green','Blue'], min: 0, max: 0.3};
 Map.addLayer(indices2025, rgbVis, '2025 RGB Composite', true);
 
 // Center map on AOI if not done already
@@ -428,7 +455,8 @@ var bufferDistance = 200; // buffer around mined samples to avoid non-mined over
 var nonMinedPointsCount = 100; // number of non-mined points per year
 
 // Bands to use for classification
-var bands = ['B2_p20','B3_p20','B4_p20','B5_p20','B6_p20','B7_p20','NDVI','NDWI','NDBI','GPI'];
+var bands = ['Blue','Green','Red','NIR','SWIR1','SWIR2','NDVI','NDWI','NDBI','GPI'];
+
 
 // Random Forest parameters
 var numTrees = 100;
@@ -544,7 +572,24 @@ for (var year = startYear; year <= endYear; year++) {
   var classified = composite.select(bands).classify(trainedRF);
   
   // Add layer to map (unchecked by default)
-  Map.addLayer(classified.clip(AOI), visParams, 'Active Mining ' + year, false);
+  Map.addLayer(classified.clip(AOI), visParams, 'Classified Active Mining ' + year, false);
+  
+  
+  // -------- ONLY/ MASKED ACTIVE MINING SITES --------
+  var activeMining = classified.eq(1).rename('ActiveMining_' + year);
+  Map.addLayer(activeMining.selfMask(),
+    {palette:['red']}, 'Masked Active Mining ' + year, false);
+
+  // Optional: export masked active mining layer
+  Export.image.toDrive({
+    image: activeMining.clip(AOI),
+    description: 'Active_Mining_Only_' + year,
+    folder: 'GEE_Exports',
+    fileNamePrefix: 'Active_Mining_Only_' + year,
+    region: AOI.geometry(),
+    scale: 30,
+    maxPixels: 1e13
+  });
   
   // --------------------------------------
   // Optional export
@@ -607,6 +652,3 @@ Map.add(legendPanel);
 
 // Center map on AOI
 Map.centerObject(AOI);
-
-
-
