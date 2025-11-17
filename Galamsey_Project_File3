@@ -716,7 +716,7 @@ for (var yr = startYear; yr <= endYear; yr++) {
   var areaHa = ee.Number(degradedArea.get("area")).divide(10000);
 
   // Print to console
-  print("Degraded Area (" + yr + "): ", areaHa);
+  //print("Degraded Area (" + yr + "): ", areaHa);
   
   // Add to legend immediately
 legendPanel.add(ui.Label(yr + ': ' + areaHa.format('%.2f').getInfo() + ' ha', 
@@ -877,3 +877,8 @@ var chart = ui.Chart.feature.groups({
 });
 
 print(chart);
+
+
+
+
+
