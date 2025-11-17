@@ -327,30 +327,30 @@ if (typeof composites_with_indices === 'undefined') {
 var indices = addIndices(filled);
 composites_with_indices[year] = indices;  // store for later use
 
-  // Export composite
-  Export.image.toDrive({
-    image: composite,
-    description: 'L8_' + year + '_Composite',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
+  // // Export composite
+  // Export.image.toDrive({
+  //   image: composite,
+  //   description: 'L8_' + year + '_Composite',
+  //   folder: folderName,
+  //   fileNamePrefix: 'L8_' + year + '_Composite',
+  //   region: aoi,
+  //   scale: 30,
+  //   crs: 'EPSG:32630',
+  //   maxPixels: 1e13
+  // });
 
-  // Compute and export indices (not visualizing them)
-  var indices = addIndices(filled);
-  Export.image.toDrive({
-    image: indices,
-    description: 'L8_' + year + '_Composite_Indices',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite_Indices',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
+  // // Compute and export indices (not visualizing them)
+  // var indices = addIndices(filled);
+  // Export.image.toDrive({
+  //   image: indices,
+  //   description: 'L8_' + year + '_Composite_Indices',
+  //   folder: folderName,
+  //   fileNamePrefix: 'L8_' + year + '_Composite_Indices',
+  //   region: aoi,
+  //   scale: 30,
+  //   crs: 'EPSG:32630',
+  //   maxPixels: 1e13
+  // });
 
   Map.addLayer(
   composite,
@@ -586,30 +586,30 @@ for (var year = startYear; year <= endYear; year++) {
     {palette:['red']}, 'Masked Active Mining ' + year, false);
 
   // Optional: export masked active mining layer
-  Export.image.toDrive({
-    image: activeMining.clip(AOI),
-    description: 'Active_Mining_Only_' + year,
-    folder: 'GEE_Exports',
-    fileNamePrefix: 'Active_Mining_Only_' + year,
-    region: AOI.geometry(),
-    scale: 30,
-    maxPixels: 1e13
-  });
+  // Export.image.toDrive({
+  //   image: activeMining.clip(AOI),
+  //   description: 'Active_Mining_Only_' + year,
+  //   folder: 'GEE_Exports',
+  //   fileNamePrefix: 'Active_Mining_Only_' + year,
+  //   region: AOI.geometry(),
+  //   scale: 30,
+  //   maxPixels: 1e13
+  // });
   
   // --------------------------------------
   // Optional export
-  // --------------------------------------
-  Export.image.toDrive({
-    image: classified.clip(AOI),
-    description: 'Active_Mining_' + year + '_RF',
-    folder: 'GEE_Exports',
-    fileNamePrefix: 'Active_Mining_' + year + '_RF',
-    region: AOI.geometry(),
-    scale: 30,
-    maxPixels: 1e13
-  });
+//   // --------------------------------------
+//   Export.image.toDrive({
+//     image: classified.clip(AOI),
+//     description: 'Active_Mining_' + year + '_RF',
+//     folder: 'GEE_Exports',
+//     fileNamePrefix: 'Active_Mining_' + year + '_RF',
+//     region: AOI.geometry(),
+//     scale: 30,
+//     maxPixels: 1e13
+//   });
   
-}
+// }
 
 // =====================================================
 // STEP 3 — LEGEND (Reusable for all years)
