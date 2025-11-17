@@ -339,8 +339,8 @@ composites_with_indices[year] = indices;  // store for later use
   //   maxPixels: 1e13
   // });
 
-  // // Compute and export indices (not visualizing them)
-  // var indices = addIndices(filled);
+  // Compute and export indices (not visualizing them)
+  var indices = addIndices(filled);
   // Export.image.toDrive({
   //   image: indices,
   //   description: 'L8_' + year + '_Composite_Indices',
@@ -609,7 +609,7 @@ for (var year = startYear; year <= endYear; year++) {
 //     maxPixels: 1e13
 //   });
   
-// }
+}
 
 // =====================================================
 // STEP 3 — LEGEND (Reusable for all years)
@@ -814,50 +814,7 @@ print('Monthly NDVI ImageCollection', monthlyNDVIcol);
 
 
 
-// //////////MONTHLY NDVICHART////////////////////
-
-// // ---------------------------
-// // REDUCE COLLECTION TO AOI MEAN NDVI
-// // ---------------------------
-// var monthlyNDVIStats = monthlyNDVIcol.map(function(image) {
-//   var meanNDVI = image.reduceRegion({
-//     reducer: ee.Reducer.mean(),
-//     geometry: aoi,
-//     scale: 30,
-//     maxPixels: 1e13
-//   }).get('NDVI');
-  
-//   return ee.Feature(null, {
-//     'year': image.get('year'),
-//     'month': image.get('month'),
-//     'NDVI': meanNDVI
-//   });
-// });
-
-// // Convert to a FeatureCollection
-// monthlyNDVIStats = ee.FeatureCollection(monthlyNDVIStats);
-
-// // ---------------------------
-// // CHART: NDVI over time
-// // ---------------------------
-// var chart = ui.Chart.feature.byFeature(monthlyNDVIStats, 'month', 'NDVI')
-//   .setChartType('LineChart')
-//   .setOptions({
-//     title: 'Monthly NDVI Time Series',
-//     hAxis: {
-//       title: 'Month',
-//       format: '###',
-//       gridlines: {count: 12}
-//     },
-//     vAxis: {title: 'Mean NDVI'},
-//     pointSize: 3,
-//     lineWidth: 2,
-//     colors: ['green']
-//   });
-
-// print(chart);
-
-
+//////////MONTHLY NDVICHART////////////////////
 // ---------------------------
 // COLORS (distinct for each year)
 // ---------------------------
