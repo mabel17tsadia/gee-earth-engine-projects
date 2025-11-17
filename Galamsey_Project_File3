@@ -742,7 +742,64 @@ var chart = ui.Chart.array.values(areaList, 0, yearLabels)
     hAxis: {title: 'Year'},
     vAxis: {title: 'Area (ha)'},
     pointSize: 5,
-    lineWidth: 2
+    lineWidth: 2,
+     colors: ['red'] 
   });
 
 print(chart);
+
+
+//................
+////Build NDVI time series (monthly) per pixel
+//..........................
+
+// ---------------------------
+// FUNCTION: Compute MONTHLY NDVI
+// ---------------------------
+function addNDVI(image) {
+  return image.addBands(image.normalizedDifference(['NIR', 'Red']).rename('NDVI'));
+}
+
+// ---------------------------
+// PARAMETERS
+// ---------------------------
+var startYear = 2010;
+var endYear = 2025;
+var months = ee.List.sequence(1, 12);
+
+// Dictionary to store monthly NDVI composites
+// Dictionary to store monthly NDVI composites
+var monthlyNDVI = ee.Dictionary({});
+
+// Loop through years and months
+for (var y = startYear; y <= endYear; y++) {
+  months.getInfo().forEach(function(m){
+    var start = ee.Date.fromYMD(y, m, 1);
+    var end = start.advance(1, 'month');
+
+    var collection = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+      .merge(ee.ImageCollection('LANDSAT/LE07/C02/T1_L2'))
+      .merge(ee.ImageCollection('LANDSAT/LC08/C02/T1_L2'))
+      .filterDate(start, end)
+      .filterBounds(aoi)
+      .map(harmonizeLandsat)
+      .map(addNDVI);
+
+    // Only add if collection is non-empty
+    var hasImages = collection.size().gt(0);
+    var monthlyComposite = ee.Image(ee.Algorithms.If(
+      hasImages,
+      collection.median().clip(aoi),
+      null
+    ));
+
+    // Update dictionary only if valid
+    monthlyNDVI = ee.Dictionary(ee.Algorithms.If(
+      hasImages,
+      monthlyNDVI.set(y + '-' + m, monthlyComposite.select('NDVI')),
+      monthlyNDVI
+    ));
+  });
+}
+
+print('Monthly NDVI dictionary', monthlyNDVI);
