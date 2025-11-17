@@ -859,7 +859,7 @@ print('Monthly NDVI ImageCollection', monthlyNDVIcol);
 
 
 // ---------------------------
-// COLORS
+// COLORS (distinct for each year)
 // ---------------------------
 var colors = [
   'red','blue','green','orange','purple','brown','pink','cyan','magenta',
@@ -867,69 +867,56 @@ var colors = [
 ];
 
 // ---------------------------
-// BUILD CHART
+// REDUCE TO MEAN NDVI PER MONTH PER YEAR
 // ---------------------------
-var chart = ui.Chart.feature.byFeature({
-  features: monthlyNDVIfc,
-  xProperty: 'year',
-  yProperties: ['values']
+var monthlyStats = monthlyNDVIcol.map(function(img){
+  var mean = img.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: aoi,
+    scale: 30,
+    maxPixels: 1e13
+  }).get('NDVI');
+  return ee.Feature(null, {
+    year: img.get('year'),
+    month: img.get('month'),
+    NDVI: mean
+  });
+});
+
+// Convert to list
+monthlyStats = monthlyStats.aggregate_array('NDVI');
+print('Monthly NDVI stats', monthlyStats);
+
+// ---------------------------
+// CHART: mean NDVI per month for each year
+// ---------------------------
+var chart = ui.Chart.feature.groups({
+  features: monthlyNDVIcol.map(function(img){
+    var mean = img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: aoi,
+      scale: 30,
+      maxPixels: 1e13
+    }).get('NDVI');
+    return ee.Feature(null, {
+      month: img.get('month'),
+      NDVI: mean,
+      year: img.get('year')
+    });
+  }),
+  xProperty: 'month',
+  yProperty: 'NDVI',
+  seriesProperty: 'year'
 })
 .setChartType('LineChart')
 .setOptions({
   title: 'Monthly NDVI Trend (2010–2025)',
-  hAxis: {title: 'Month (1–12)'},
+  hAxis: {title: 'Month', gridlines: {count: 12}},
   vAxis: {title: 'Mean NDVI'},
   lineWidth: 2,
-  pointSize: 4,
-  series: (function() {
-    var s = {};
-    for (var i = 0; i < features.length; i++) {
-      s[i] = {color: colors[i % colors.length]};
-    }
-    return s;
-  })()
+  pointSize: 3,
+  colors: colors,
+  legend: {position: 'right'}
 });
 
 print(chart);
-
-// ---------------------------
-// LEGEND PANEL
-// ---------------------------
-var legendPanel = ui.Panel({
-  style: {
-    position: 'bottom-right',
-    width: '160px',
-    padding: '8px',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    border: '1px solid black'
-  }
-});
-
-// Title
-legendPanel.add(ui.Label({
-  value: 'Year Colors',
-  style: {fontWeight: 'bold', fontSize: '14px', margin: '0 0 6px 0'}
-}));
-
-// Add each year with its color
-for (var i = 0; i < features.length; i++) {
-  var year = features[i].get('year');
-  var color = colors[i % colors.length];
-
-  var colorBox = ui.Label({
-    style: {
-      backgroundColor: color,
-      padding: '8px',
-      margin: '0 0 4px 0'
-    }
-  });
-
-  var description = ui.Label({
-    value: year,
-    style: {margin: '0 0 4px 6px', fontSize: '13px'}
-  });
-
-  legendPanel.add(ui.Panel([colorBox, description], ui.Panel.Layout.Flow('horizontal')));
-}
-
-Map.add(legendPanel);
