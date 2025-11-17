@@ -814,7 +814,7 @@ print('Monthly NDVI ImageCollection', monthlyNDVIcol);
 
 
 
-////////////MONTHLY NDVICHART////////////////////
+// //////////MONTHLY NDVICHART////////////////////
 
 // // ---------------------------
 // // REDUCE COLLECTION TO AOI MEAN NDVI
@@ -858,5 +858,78 @@ print('Monthly NDVI ImageCollection', monthlyNDVIcol);
 // print(chart);
 
 
+// ---------------------------
+// COLORS
+// ---------------------------
+var colors = [
+  'red','blue','green','orange','purple','brown','pink','cyan','magenta',
+  'olive','navy','gold','teal','maroon','grey','darkgreen','darkred'
+];
 
+// ---------------------------
+// BUILD CHART
+// ---------------------------
+var chart = ui.Chart.feature.byFeature({
+  features: monthlyNDVIfc,
+  xProperty: 'year',
+  yProperties: ['values']
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'Monthly NDVI Trend (2010–2025)',
+  hAxis: {title: 'Month (1–12)'},
+  vAxis: {title: 'Mean NDVI'},
+  lineWidth: 2,
+  pointSize: 4,
+  series: (function() {
+    var s = {};
+    for (var i = 0; i < features.length; i++) {
+      s[i] = {color: colors[i % colors.length]};
+    }
+    return s;
+  })()
+});
 
+print(chart);
+
+// ---------------------------
+// LEGEND PANEL
+// ---------------------------
+var legendPanel = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    width: '160px',
+    padding: '8px',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    border: '1px solid black'
+  }
+});
+
+// Title
+legendPanel.add(ui.Label({
+  value: 'Year Colors',
+  style: {fontWeight: 'bold', fontSize: '14px', margin: '0 0 6px 0'}
+}));
+
+// Add each year with its color
+for (var i = 0; i < features.length; i++) {
+  var year = features[i].get('year');
+  var color = colors[i % colors.length];
+
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+
+  var description = ui.Label({
+    value: year,
+    style: {margin: '0 0 4px 6px', fontSize: '13px'}
+  });
+
+  legendPanel.add(ui.Panel([colorBox, description], ui.Panel.Layout.Flow('horizontal')));
+}
+
+Map.add(legendPanel);
