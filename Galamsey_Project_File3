@@ -490,6 +490,8 @@ var minedSamplesDict = {
 // ---------------------------
 var visParams = {min:0, max:1, palette:['#00FF00','#FF0000']}; // green = non-mined, red = mined
 
+var classifiedDict = {};
+
 // ---------------------------
 // Loop through each year
 // ---------------------------
@@ -570,6 +572,9 @@ for (var year = startYear; year <= endYear; year++) {
   // Classify composite (Active Mining Map)
   // --------------------------------------
   var classified = composite.select(bands).classify(trainedRF);
+  
+  ///STORE CLASSIFIFED MAPS///
+  classifiedDict[year] = classified;
   
   // Add layer to map (unchecked by default)
   Map.addLayer(classified.clip(AOI), visParams, 'Classified Active Mining ' + year, false);
@@ -652,3 +657,122 @@ Map.add(legendPanel);
 
 // Center map on AOI
 Map.centerObject(AOI);
+
+
+
+// ------------------------------------------
+
+// Initialize panel before loop
+var legendPanel = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    width: '200px',
+    height: '250px',
+    padding: '10px',
+    backgroundColor: 'white',
+    border: '1px solid black'
+  }
+});
+
+// Add title
+legendPanel.add(ui.Label({
+  value: 'Degraded Area per Year (ha)',
+  style: {fontWeight: 'bold', fontSize: '15px', margin: '0 0 6px 0', textAlign: 'center'}
+}));
+
+Map.add(legendPanel);
+
+// DEGRADED / ACTIVE MINING AREA CALCULATION
+// ------------------------------------------
+
+var yearList = ee.List([]);
+var areaList = ee.List([]);
+
+for (var yr = startYear; yr <= endYear; yr++) {
+  
+  if (!(yr in classifiedDict)) {
+    print("No classified map for:", yr);
+    continue;
+  }
+
+  var classifiedImg = classifiedDict[yr];
+
+  // Extract degraded (mining) pixels
+  var degraded = classifiedImg.eq(1).selfMask();
+
+  // Pixel area
+  var pixelArea = ee.Image.pixelArea();
+
+  // Compute degraded area inside AOI
+  var degradedArea = pixelArea.updateMask(degraded)
+    .reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: AOI,
+      scale: 30,
+      maxPixels: 1e13
+    });
+
+  // Convert to hectares
+  var areaHa = ee.Number(degradedArea.get("area")).divide(10000);
+
+  // Print to console
+  print("Degraded Area (" + yr + "): ", areaHa);
+  
+  // Add to legend immediately
+legendPanel.add(ui.Label(yr + ': ' + areaHa.format('%.2f').getInfo() + ' ha', 
+  {fontSize: '13px', margin: '2px 0 2px 0'}));
+
+  // Append to lists
+  yearList = yearList.add(yr);
+  areaList = areaList.add(areaHa);
+}
+
+
+//TIME-SERIES CHART///
+var chart = ui.Chart.array.values(areaList, 0, yearList)
+  .setChartType('LineChart')
+  .setOptions({
+    title: 'Active Mining / Degraded Land Over Time',
+    hAxis: {title: 'Year'},
+    vAxis: {title: 'Area (ha)'},
+    pointSize: 5,
+    lineWidth: 2
+  });
+
+print(chart);
+
+
+// // ===============================
+// // SCROLLABLE LEGEND — Degraded Area
+// // ===============================
+// var legendPanel = ui.Panel({
+//   style: {
+//     position: 'bottom-right', // right side of the map
+//     width: '200px',
+//     height: '250px',
+//     padding: '10px',
+//     backgroundColor: 'white',
+//     border: '1px solid black'
+//   }
+// });
+
+// // Legend title
+// legendPanel.add(ui.Label({
+//   value: 'Degraded Area per Year (ha)',
+//   style: {fontWeight: 'bold', fontSize: '15px', margin: '0 0 6px 0', textAlign: 'center'}
+// }));
+
+// // Add year-area pairs
+// var yearAreaPairs = yearList.zip(areaList);
+
+// yearAreaPairs.evaluate(function(list){
+//   list.forEach(function(item){
+//     var yr = item[0];
+//     var ar = ee.Number(item[1]).format('%.2f').getInfo();
+//     legendPanel.add(ui.Label(yr + ': ' + ar + ' ha', 
+//       {fontSize: '13px', margin: '2px 0 2px 0'}));
+//   });
+// });
+
+// // Add to map
+// Map.add(legendPanel);
