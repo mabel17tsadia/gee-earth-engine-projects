@@ -1009,7 +1009,7 @@ var endDate   = '2025-12-31';
 var AOI = aoi; // ensure `aoi` exists as a geometry/feature in your script
 var monthlyNDVIcol = monthlyNDVIcol || ee.ImageCollection([]); // provide from earlier phases
 var scaleReduce = 7000; // scale for S5P reductions/exports (coarse)
-var minedAreaTS = 
+var minedAreaTS = areaDict;
 // ---------------------------
 // 1. Load Sentinel-5P CH4 & CO
 // ---------------------------
