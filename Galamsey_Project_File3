@@ -1141,37 +1141,37 @@ var chartCOAnom = ui.Chart.image.series(coAnom, aoi, ee.Reducer.mean(), 7000, 's
   .setOptions({title: 'CO Anomalies (mol/m²)', lineWidth:2, pointSize:4, colors:['#1a9850']});
 print(chartCOAnom);
 
-// ---------------------------
-// 7. Export results
-// ---------------------------
-Export.image.toDrive({
-  image: ch4_ndvi_corr.addBands(co_ndvi_corr).toFloat(),
-  description: 'Gas_NDVI_Correlations',
-  folder: folderName,
-  fileNamePrefix: 'Gas_NDVI_corr',
-  region: aoi.geometry(),
-  scale: 7000,
-  maxPixels: 1e10
-});
+// // ---------------------------
+// // 7. Export results
+// // ---------------------------
+// Export.image.toDrive({
+//   image: ch4_ndvi_corr.addBands(co_ndvi_corr).toFloat(),
+//   description: 'Gas_NDVI_Correlations',
+//   folder: folderName,
+//   fileNamePrefix: 'Gas_NDVI_corr',
+//   region: aoi.geometry(),
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
-Export.image.toDrive({
-  image: monthlyCH4.toBands().clip(aoi).toFloat(),
-  description: 'CH4_Monthly',
-  folder: folderName,
-  fileNamePrefix: 'CH4_monthly',
-  region: aoi.geometry(),
-  scale: 7000,
-  maxPixels: 1e10
-});
+// Export.image.toDrive({
+//   image: monthlyCH4.toBands().clip(aoi).toFloat(),
+//   description: 'CH4_Monthly',
+//   folder: folderName,
+//   fileNamePrefix: 'CH4_monthly',
+//   region: aoi.geometry(),
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
-Export.image.toDrive({
-  image: monthlyCO.toBands().clip(aoi).toFloat(),
-  description: 'CO_Monthly',
-  folder: folderName,
-  fileNamePrefix: 'CO_monthly',
-  region: aoi.geometry(),
-  scale: 7000,
-  maxPixels: 1e10
-});
+// Export.image.toDrive({
+//   image: monthlyCO.toBands().clip(aoi).toFloat(),
+//   description: 'CO_Monthly',
+//   folder: folderName,
+//   fileNamePrefix: 'CO_monthly',
+//   region: aoi.geometry(),
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
 print('✅ Phase 5 completed. CH₄ & CO correlations, anomalies, and NDVI analysis ready.');
