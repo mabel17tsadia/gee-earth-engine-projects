@@ -991,217 +991,375 @@ Map.add(legend);
 // PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
 // ---------------------------------------------------------
 
-// ---------------------------------------------------------
-// INPUTS
-// ---------------------------------------------------------
-var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4');
-var co  = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO');
+// Phase 5 — Vegetation & Water Impact Indices + Sentinel-5P CH4 & CO (2018–2025)
+// Usage: paste into the Earth Engine Code Editor. Assumes `aoi` and `monthlyNDVIcol` (monthly NDVI composites) exist in your script.
+// Notes: Sentinel-5P CH4/CO are available from mid-2018 — this script uses 2018-07-01 to 2025-12-31.
 
-var startYear = 2010;
-var endYear = 2025;
-var AOI = aoi;
+// ---------------------------
+// USER PARAMETERS
+// ---------------------------
+var folderName = 'Galamsey_Project_BDG';
+var exportFolder = 'GHG_Data';
+var startDate = '2018-07-01';
+var endDate   = '2025-12-31';
+var AOI = aoi; // ensure `aoi` exists as a geometry/feature in your script
+var monthlyNDVIcol = monthlyNDVIcol || ee.ImageCollection([]); // provide from earlier phases
+var scaleReduce = 7000; // scale for S5P reductions/exports (coarse)
 
-// ----------------------------------------------
-// FUNCTION: Extract NDVI Composites From Dictionary
-// ----------------------------------------------
-function getNDVIfromDictionary(year, month) {
-  var yearDict = ee.Dictionary(composites[year]);
-  var monthlyImg = ee.Image(yearDict.get(month));
-  return monthlyImg;
-}
+// ---------------------------
+// 1. Load Sentinel-5P CH4 & CO
+// ---------------------------
+var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
+  .filterDate(startDate, endDate)
+  .filterBounds(AOI.geometry())
+  .select('CH4_column_volume_mixing_ratio_dry_air');
 
-// ----------------------------------------------
-// FUNCTION: Monthly S5P Mean for CH4 and CO
-// ----------------------------------------------
-function monthlyMean_S5P(collection, year, month, bandName) {
+var co = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO')
+  .filterDate(startDate, endDate)
+  .filterBounds(AOI.geometry())
+  .select('CO_column_number_density');
+
+print('S5P CH4 images:', ch4.size());
+print('S5P CO images :', co.size());
+
+// ---------------------------
+// 2. Compute overall means (clipped to AOI)
+// ---------------------------
+var ch4Mean = ch4.mean().clip(AOI);
+var coMean  = co.mean().clip(AOI);
+
+Map.centerObject(AOI, 10);
+Map.addLayer(ch4Mean, {min:1800, max:1950, palette:['black','blue','cyan','green','yellow','red']}, 'CH4 Mean 2018–2025 (ppbv)', false);
+Map.addLayer(coMean,  {min:0.02, max:0.08, palette:['#000004','#3B1F6E','#8C50A4','#C4A3D3','#FFFFD4']}, 'CO Mean 2018–2025 (mol/m²)', true);
+
+// Stats (AOI mean)
+var meanCH4 = ch4Mean.reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI.geometry(), scale: scaleReduce, maxPixels: 1e13}).get('CH4_column_volume_mixing_ratio_dry_air');
+var meanCO  = coMean.reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI.geometry(), scale: scaleReduce, maxPixels: 1e13}).get('CO_column_number_density');
+print('Mean CH4 (ppbv):', ee.Number(meanCH4).format('%.1f'));
+print('Mean CO  (mol/m²):', ee.Number(meanCO).format('%.4f'));
+
+// ---------------------------
+// 3. Build robust monthly collections (returns only months with data)
+// ---------------------------
+var years = ee.List.sequence(2018, 2025);
+var months = ee.List.sequence(1, 12);
+
+function makeMonthly(collection, bandName, year, month) {
   var start = ee.Date.fromYMD(year, month, 1);
-  var end = start.advance(1, 'month');
-
-  return collection
-    .filterDate(start, end)
-    .filterBounds(AOI)
-    .select(bandName)
-    .mean()
-    .clip(AOI)
-    .set({
-      'year': year,
-      'month': month,
-      'system:time_start': start.millis()
-    });
+  var end   = start.advance(1, 'month');
+  var filtered = collection.filterDate(start, end);
+  var count = filtered.size();
+  var img = ee.Image(filtered.mean());
+  return ee.Algorithms.If(
+    count.gt(0),
+    img.set('year', year).set('month', month).set('system:time_start', start.millis()),
+    null
+  );
 }
 
-// ------------------------------------------------
-// LOOP → BUILD STRUCTURE
-// ------------------------------------------------
-var ch4List = [];
-var coList = [];
-var ndviList = [];
+var monthlyCH4 = ee.ImageCollection.fromImages(
+  years.map(function(y) {
+    return months.map(function(m) { return makeMonthly(ch4, 'CH4_column_volume_mixing_ratio_dry_air', y, m); });
+  }).flatten()
+).filter(ee.Filter.notNull(['system:time_start']));
 
-var ch4AnomList = [];
-var coAnomList  = [];
+var monthlyCO = ee.ImageCollection.fromImages(
+  years.map(function(y) {
+    return months.map(function(m) { return makeMonthly(co, 'CO_column_number_density', y, m); });
+  }).flatten()
+).filter(ee.Filter.notNull(['system:time_start']));
 
-var ch4TS = [];
-var coTS  = [];
+print('Valid monthly CH4 images:', monthlyCH4.size());
+print('Valid monthly CO  images:', monthlyCO.size());
 
-for (var y = startYear; y <= endYear; y++) {
-  for (var m = 1; m <= 12; m++) {
+// ---------------------------
+// 4. Monthly climatology (month-of-year mean) and anomalies
+// ---------------------------
+var ch4Clim = ee.ImageCollection.fromImages(
+  months.map(function(m) {
+    var filtered = monthlyCH4.filter(ee.Filter.eq('month', m));
+    return ee.Image(filtered.mean()).set('month', m);
+  })
+);
 
-    // ------------------------------------------
-    // NDVI FROM DICTIONARY (Phase 4 output)
-    // ------------------------------------------
-    var ndvi = getNDVIfromDictionary(y, m);
-    var ndviExists = ndvi !== null;
+var coClim = ee.ImageCollection.fromImages(
+  months.map(function(m) {
+    var filtered = monthlyCO.filter(ee.Filter.eq('month', m));
+    return ee.Image(filtered.mean()).set('month', m);
+  })
+);
 
-    if (ndviExists) {
+var ch4Anomalies = monthlyCH4.map(function(img) {
+  var m = img.get('month');
+  var clim = ee.Image(ch4Clim.filter(ee.Filter.eq('month', m)).first());
+  return img.subtract(clim).rename('CH4_anomaly').copyProperties(img, ['system:time_start','year','month']);
+});
 
-      // Monthly CH4
-      var ch4m = monthlyMean_S5P(ch4, y, m, 'CH4_column_volume_mixing_ratio_dry_air');
-      var com  = monthlyMean_S5P(co,  y, m, 'CO_column_number_density');
+var coAnomalies = monthlyCO.map(function(img) {
+  var m = img.get('month');
+  var clim = ee.Image(coClim.filter(ee.Filter.eq('month', m)).first());
+  return img.subtract(clim).rename('CO_anomaly').copyProperties(img, ['system:time_start','year','month']);
+});
 
-      ch4List.push(ch4m);
-      coList.push(com);
-      ndviList.push(ndvi.set({year:y, month:m}));
+// ---------------------------
+// 5. Vegetation & Water Indices (use monthlyNDVIcol where possible)
+//    - monthlyNDVIcol is expected to have an NDVI band (named 'NDVI' or 'ndvi')
+//    - If monthlyNDVIcol contains surface reflectance (green, nir, swir1) the script will compute NDWI/MNDWI/EVI
+// ---------------------------
 
-      // Add Time-series values
-      ch4TS.push(ch4m.reduceRegion({
-        reducer: ee.Reducer.mean(),
-        geometry: AOI,
-        scale: 5000,
-        maxPixels: 1e13
-      }).set({year:y, month:m}));
+// Detect NDVI band
+var ndviNames = ['NDVI','ndvi','NDVI_mean'];
+var ndviBand = null;
+if (monthlyNDVIcol.size().gt(0)){
+  var first = monthlyNDVIcol.first();
+  var bands = first.bandNames();
+  ndviNames.forEach(function(b){
+    // can't use JS forEach on ee.List; do check below instead
+  });
+  // pick first matching
+  var bandList = bands.filter(ee.Filter.inList(ee.Filter.equals('item'), ee.List(ndviNames)));
+  bandList = bands.filter(ee.Filter.inList('item', ee.List(ndviNames)));
+  // fallback: see if an 'NDVI' band exists
+  ndviBand = ee.Algorithms.If(bands.contains('NDVI'), 'NDVI', ee.Algorithms.If(bands.contains('ndvi'), 'ndvi', null));
+} else {
+  ndviBand = null;
+}
 
-      coTS.push(com.reduceRegion({
-        reducer: ee.Reducer.mean(),
-        geometry: AOI,
-        scale: 5000,
-        maxPixels: 1e13
-      }).set({year:y, month:m}));
-
-    }
+// Function to safely compute indices when bands exist
+function addIndices(img){
+  var out = img;
+  var bandNames = img.bandNames();
+  // NDVI: if provided as a band, keep; else do nothing
+  if (bandNames.contains('NDVI')){
+    out = img.select(['NDVI']).rename('NDVI');
+  } else if (bandNames.contains('ndvi')){
+    out = img.select(['ndvi']).rename('NDVI');
   }
+
+  // attempt NDWI & MNDWI if green/nir/swir1 exist
+  if (bandNames.contains('GREEN') || bandNames.contains('green') || bandNames.contains('B3') || bandNames.contains('B02')){
+    var green = img.select(['GREEN']).first();
+    // we'll try several common names
+    var g = ee.Image(0);
+    try{ g = img.select(['GREEN']); } catch(e){}
+    try{ g = img.select(['green']); } catch(e){}
+    try{ g = img.select(['B3']); } catch(e){}
+    try{ g = img.select(['B02']); } catch(e){}
+    // NIR
+    var nir = ee.Image(0);
+    try{ nir = img.select(['NIR']); } catch(e){}
+    try{ nir = img.select(['nir']); } catch(e){}
+    try{ nir = img.select(['B5']); } catch(e){}
+    try{ nir = img.select(['B08']); } catch(e){}
+    // SWIR1
+    var swir1 = ee.Image(0);
+    try{ swir1 = img.select(['SWIR1']); } catch(e){}
+    try{ swir1 = img.select(['swir1']); } catch(e){}
+    try{ swir1 = img.select(['B6']); } catch(e){}
+    try{ swir1 = img.select(['B11']); } catch(e){}
+
+    // only compute if band objects are not empty images (best-effort)
+    // Compute NDWI and MNDWI using normalizedDifference when possible
+    try{
+      var ndwi = img.normalizedDifference(['green','nir']).rename('NDWI');
+      var mndwi = img.normalizedDifference(['green','swir1']).rename('MNDWI');
+      out = out.addBands(ndwi).addBands(mndwi);
+    }catch(e){ /* skip */ }
+  }
+  return out;
 }
 
-// Convert lists to ImageCollections
-var ch4Col  = ee.ImageCollection(ch4List);
-var coCol   = ee.ImageCollection(coList);
-var ndviCol = ee.ImageCollection(ndviList);
-
-// -----------------------------------------------------------
-// ANOMALIES
-// -----------------------------------------------------------
-var ch4Mean = ch4Col.mean();
-var coMean  = coCol.mean();
-
-var ch4Anom = ch4Col.map(function(img){ return img.subtract(ch4Mean).set(img.toDictionary()); });
-var coAnom  = coCol.map(function(img){ return img.subtract(coMean).set(img.toDictionary()); });
-
-// -----------------------------------------------------------
-// CORRELATION (CH4–NDVI & CO–NDVI)
-// -----------------------------------------------------------
-function pairForCorrelation(gasCol, ndviCol, bandGas, bandNDVI) {
-  return ee.ImageCollection(gasCol.iterate(function(gImg, list){
-    gImg = ee.Image(gImg);
-    var y = gImg.get('year');
-    var m = gImg.get('month');
-
-    var ndvi = ndviCol.filter(ee.Filter.eq('year', y))
-                      .filter(ee.Filter.eq('month', m))
-                      .first();
-
-    return ee.List(list).add(
-      gImg.addBands(ndvi.select('NDVI'))
-          .set({year:y, month:m})
-    );
-  }, ee.List([])));
+// Prepare NDVI time series from monthlyNDVIcol if available
+var ndviSeriesCol = ee.ImageCollection([]);
+if (monthlyNDVIcol.size().getInfo() > 0){
+  // ensure NDVI band exists; if not, attempt to compute NDVI from bands (not implemented here)
+  ndviSeriesCol = monthlyNDVIcol.map(function(img){
+    // normalize band name to 'NDVI' if needed
+    var bn = img.bandNames();
+    var withNDVI = img;
+    if (bn.contains('ndvi')){ withNDVI = img.select(['ndvi']).rename('NDVI'); }
+    else if (bn.contains('NDVI')){ withNDVI = img.select(['NDVI']).rename('NDVI'); }
+    else { withNDVI = img; }
+    return withNDVI.copyProperties(img, ['system:time_start']);
+  });
+} else {
+  print('monthlyNDVIcol is empty — NDVI charts will be skipped.');
 }
 
-var ch4_ndvi_pairs = ee.ImageCollection(pairForCorrelation(ch4Col, ndviCol, 'CH4', 'NDVI'));
-var co_ndvi_pairs  = ee.ImageCollection(pairForCorrelation(coCol, ndviCol, 'CO',  'NDVI'));
+// ---------------------------
+// 6. Correlation with minedAreaTS (if available)
+//    minedAreaTS is expected as a client-side array of objects [{date:'YYYY-MM', area: value}, ...] OR an ee.FeatureCollection
+// ---------------------------
+if (typeof minedAreaTS !== 'undefined'){
+  // Build CH4 AOI mean time series (date string YYYY-MM) from ch4Anomalies
+  var ch4AOIseries = ch4Anomalies.map(function(img){
+    var mean = img.reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI.geometry(), scale: scaleReduce, maxPixels: 1e13}).get('CH4_column_volume_mixing_ratio_dry_air');
+    var date = ee.Date(img.get('system:time_start')).format('YYYY-MM');
+    return ee.Feature(null, {date: date, ch4_anom: mean});
+  }).filter(ee.Filter.notNull(['ch4_anom']));
 
-var ch4_ndvi_corr = ch4_ndvi_pairs.reduce(ee.Reducer.pearsonsCorrelation())
-                                .select('correlation');
+  // Convert minedAreaTS if it's a client-side array
+  var minedFC = null;
+  try{
+    minedFC = ee.FeatureCollection(minedAreaTS.map(function(d){ return ee.Feature(null, d); }));
+  }catch(e){ minedFC = ee.FeatureCollection(minedAreaTS); }
 
-var co_ndvi_corr  = co_ndvi_pairs.reduce(ee.Reducer.pearsonsCorrelation())
-                                .select('correlation');
+  // Join by date string
+  var inner = ee.Join.inner();
+  var joined = inner.apply(ch4AOIseries, minedFC, ee.Filter.equals({leftField: 'date', rightField: 'date'}));
 
-// -----------------------------------------------------------
-// VISUALIZATION
-// -----------------------------------------------------------
-var ch4Vis = {min: 0.000015, max: 0.000020, palette:['blue','cyan','green','yellow','red']};
-var coVis  = {min: 0.02, max: 0.08, palette:['purple','blue','cyan','yellow','red']};
-var anomVis = {min:-0.02, max:0.02, palette:['blue','white','red']};
-var corrVis = {min:-1, max:1, palette:['blue','white','red']};
-
-// Add layers
-Map.addLayer(ch4Col.first(), ch4Vis, 'CH4 (Sample Month)');
-Map.addLayer(coCol.first(), coVis, 'CO (Sample Month)');
-Map.addLayer(ch4Anom.first(), anomVis, 'CH4 Anomaly');
-Map.addLayer(coAnom.first(), anomVis, 'CO Anomaly');
-Map.addLayer(ch4_ndvi_corr, corrVis, 'CH4–NDVI Correlation');
-Map.addLayer(co_ndvi_corr, corrVis, 'CO–NDVI Correlation');
-
-Map.centerObject(AOI, 9);
-
-// -----------------------------------------------------------
-// CHARTS: Time-Series
-// -----------------------------------------------------------
-var ch4Chart = ui.Chart.feature.byFeature(ee.FeatureCollection(ch4TS), 'month', ['CH4_column_volume_mixing_ratio_dry_air'])
-  .setChartType('LineChart')
-  .setOptions({
-    title: 'CH₄ Monthly Time-Series',
-    hAxis: {title: 'Month'},
-    vAxis: {title: 'CH₄ (vmr)'},
-    lineWidth: 2
+  var pairs = joined.map(function(f){
+    var left = ee.Feature(f.get('primary'));
+    var right = ee.Feature(f.get('secondary'));
+    return ee.Feature(null, {date: left.get('date'), ch4: left.get('ch4_anom'), area: right.get('area')});
   });
 
-var coChart = ui.Chart.feature.byFeature(ee.FeatureCollection(coTS), 'month', ['CO_column_number_density'])
-  .setChartType('LineChart')
-  .setOptions({
-    title: 'CO Monthly Time-Series',
-    hAxis: {title: 'Month'},
-    vAxis: {title: 'CO (mol/m²)'},
-    lineWidth: 2
-  });
+  // Compute Pearson correlation using ee.Array
+  var ch4List = ee.Array(pairs.aggregate_array('ch4'));
+  var areaList = ee.Array(pairs.aggregate_array('area'));
 
-print(ch4Chart);
-print(coChart);
+  var ch4Mean = ch4List.reduce('mean', [0]);
+  var areaMean = areaList.reduce('mean', [0]);
+  var ch4Dev = ch4List.subtract(ch4Mean);
+  var areaDev = areaList.subtract(areaMean);
+  var numerator = ch4Dev.multiply(areaDev).reduce('sum', [0]);
+  var ch4Var = ch4Dev.pow(2).reduce('sum', [0]);
+  var areaVar = areaDev.pow(2).reduce('sum', [0]);
+  var pearson = numerator.divide(ch4Var.sqrt().multiply(areaVar.sqrt()));
+  print('Pearson correlation (CH4 anomaly vs mined area):', pearson);
+} else {
+  print('minedAreaTS not found — skipping correlation step.');
+}
 
-// -----------------------------------------------------------
-// EXPORTS
-// -----------------------------------------------------------
+// ---------------------------
+// 7. Charts
+// ---------------------------
+var chartCH4 = ui.Chart.image.series({imageCollection: monthlyCH4, region: AOI, reducer: ee.Reducer.mean(), scale: scaleReduce, xProperty: 'system:time_start'})
+  .setOptions({title: 'AOI monthly CH4 (2018–2025)', vAxis: {title: 'CH4 (ppbv)'}, lineWidth: 2, pointSize: 3});
+print(chartCH4);
+
+var chartCH4Anom = ui.Chart.image.series({imageCollection: ch4Anomalies, region: AOI, reducer: ee.Reducer.mean(), scale: scaleReduce, xProperty: 'system:time_start'})
+  .setOptions({title: 'AOI monthly CH4 anomalies (2018–2025)', vAxis: {title: 'CH4 anomaly'}, lineWidth: 2, pointSize: 3});
+print(chartCH4Anom);
+
+var chartCO = ui.Chart.image.series({imageCollection: monthlyCO, region: AOI, reducer: ee.Reducer.mean(), scale: scaleReduce, xProperty: 'system:time_start'})
+  .setOptions({title: 'AOI monthly CO (2018–2025)', vAxis: {title: 'CO (mol/m²)'}, lineWidth: 2, pointSize: 3});
+print(chartCO);
+
+var chartCOAnom = ui.Chart.image.series({imageCollection: coAnomalies, region: AOI, reducer: ee.Reducer.mean(), scale: scaleReduce, xProperty: 'system:time_start'})
+  .setOptions({title: 'AOI monthly CO anomalies (2018–2025)', vAxis: {title: 'CO anomaly'}, lineWidth: 2, pointSize: 3});
+print(chartCOAnom);
+
+if (ndviSeriesCol.size().getInfo() > 0){
+  var chartNDVI = ui.Chart.image.series({imageCollection: ndviSeriesCol.select(['NDVI']), region: AOI, reducer: ee.Reducer.mean(), scale: 30, xProperty: 'system:time_start'})
+    .setOptions({title: 'AOI monthly NDVI (monthly composites)', vAxis: {title: 'NDVI'}, lineWidth: 2, pointSize: 3});
+  print(chartNDVI);
+}
+
+// ---------------------------
+// 8. Exports (Drive)
+// ---------------------------
+// Overall mean CH4 & CO
 Export.image.toDrive({
-  image: ch4_ndvi_corr,
-  description: 'CH4_NDVI_Correlation',
-  folder: 'Phase5',
-  fileNamePrefix: 'CH4_NDVI_Corr',
-  region: AOI,
-  scale: 5000,
+  image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(),
+  description: folderName + '_Mean_CH4_CO_2018_2025',
+  folder: exportFolder,
+  fileNamePrefix: folderName + '_Mean_CH4_CO_2018_2025',
+  region: AOI.geometry(),
+  scale: scaleReduce,
+  maxPixels: 1e13
+});
+
+// Monthly stacks: convert each monthly collection to a multiband image where band names indicate date
+function toMultiBand(col, prefix){
+  var list = col.toList(col.size());
+  var images = ee.List.sequence(0, col.size().subtract(1)).map(function(i){
+    var img = ee.Image(list.get(i));
+    var date = ee.Date(img.get('system:time_start')).format('YYYY_MM');
+    return img.rename(ee.String(prefix).cat('_').cat(date));
+  });
+  return ee.ImageCollection(images).toBands();
+}
+
+// Export monthly stacks (may be large; adjust scale or split by year if needed)
+Export.image.toDrive({
+  image: toMultiBand(monthlyCH4, 'CH4').clip(AOI).toFloat(),
+  description: folderName + '_CH4_Monthly_Stack',
+  folder: exportFolder,
+  fileNamePrefix: folderName + '_CH4_monthly_stack',
+  region: AOI.geometry(),
+  scale: scaleReduce,
   maxPixels: 1e13
 });
 
 Export.image.toDrive({
-  image: co_ndvi_corr,
-  description: 'CO_NDVI_Correlation',
-  folder: 'Phase5',
-  fileNamePrefix: 'CO_NDVI_Corr',
-  region: AOI,
-  scale: 5000,
+  image: toMultiBand(monthlyCO, 'CO').clip(AOI).toFloat(),
+  description: folderName + '_CO_Monthly_Stack',
+  folder: exportFolder,
+  fileNamePrefix: folderName + '_CO_monthly_stack',
+  region: AOI.geometry(),
+  scale: scaleReduce,
   maxPixels: 1e13
 });
 
-// Export Time-Series CSV
-Export.table.toDrive({
-  collection: ee.FeatureCollection(ch4TS),
-  description:'CH4_TimeSeries',
-  folder:'Phase5',
-  fileNamePrefix:'CH4_TS'
+Export.image.toDrive({
+  image: toMultiBand(ch4Anomalies, 'CH4anom').clip(AOI).toFloat(),
+  description: folderName + '_CH4_Anomaly_Stack',
+  folder: exportFolder,
+  fileNamePrefix: folderName + '_CH4_anomaly_stack',
+  region: AOI.geometry(),
+  scale: scaleReduce,
+  maxPixels: 1e13
+});
+
+Export.image.toDrive({
+  image: toMultiBand(coAnomalies, 'COanom').clip(AOI).toFloat(),
+  description: folderName + '_CO_Anomaly_Stack',
+  folder: exportFolder,
+  fileNamePrefix: folderName + '_CO_anomaly_stack',
+  region: AOI.geometry(),
+  scale: scaleReduce,
+  maxPixels: 1e13
+});
+
+// Export monthly AOI summary table (CH4 anom, CO anom, NDVI mean if available)
+var monthsFeatures = ch4Anomalies.map(function(img){
+  var ch4mean = img.reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI.geometry(), scale: scaleReduce, maxPixels: 1e13}).get('CH4_column_volume_mixing_ratio_dry_air');
+  var date = ee.Date(img.get('system:time_start')).format('YYYY-MM');
+  var ndviMean = null;
+  if (ndviSeriesCol.size().getInfo() > 0){
+    var ndviImg = ndviSeriesCol.filterDate(ee.Date(img.get('system:time_start')),
+                                            ee.Date(img.get('system:time_start')).advance(1, 'month')).first();
+    ndviMean = ee.Algorithms.If(ndviImg, ee.Image(ndviImg).reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI.geometry(), scale: 30, maxPixels: 1e13}).get('NDVI'), null);
+  }
+  return ee.Feature(null, {date: date, ch4_anom: ch4mean, ndvi_mean: ndviMean});
 });
 
 Export.table.toDrive({
-  collection: ee.FeatureCollection(coTS),
-  description:'CO_TimeSeries',
-  folder:'Phase5',
-  fileNamePrefix:'CO_TS'
+  collection: monthsFeatures,
+  description: folderName + '_monthly_AOI_summary',
+  folder: exportFolder,
+  fileFormat: 'CSV',
+  fileNamePrefix: folderName + '_monthly_AOI_summary'
 });
 
+// ---------------------------
+// 9. Simple legend helper (adds a color bar) — user can customize palettes
+// ---------------------------
+function addColorbar(title){
+  var legend = ui.Panel({style: {position: 'bottom-left', padding: '8px 15px'}});
+  legend.add(ui.Label(title, {fontWeight: 'bold'}));
+  var lon = ee.List.sequence(0, 1, null, 10);
+  var gradient = ui.Thumbnail({image: ee.Image.pixelLonLat().select(0), params: {bbox:'0,0,10,1', dimensions:'256x10'}, style: {stretch: 'horizontal'}});
+  legend.add(gradient);
+  Map.add(legend);
+}
 
+// Add latest anomaly layers for quick view
+var latestCh4 = ee.Image(ch4Anomalies.sort('system:time_start', false).first());
+var latestCo  = ee.Image(coAnomalies.sort('system:time_start', false).first());
+if (latestCh4) Map.addLayer(latestCh4.clip(AOI), {min:-20, max:20, palette:['blue','white','red']}, 'Latest CH4 anomaly');
+if (latestCo) Map.addLayer(latestCo.clip(AOI), {min:-0.02, max:0.02, palette:['blue','white','red']}, 'Latest CO anomaly');
+
+print('Phase 5 script (S5P, 2018–2025) loaded.');
+print('If you want pixel-wise correlation maps or per-year stacks split by year, I can add those next.');
