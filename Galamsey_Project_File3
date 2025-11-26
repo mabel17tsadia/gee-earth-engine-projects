@@ -987,219 +987,325 @@ Map.add(legend);
 // print(chart);
 
 
-// ---------------------------------------------------------
-// PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
-// ---------------------------------------------------------
+// // ---------------------------------------------------------
+// // PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
+// // ---------------------------------------------------------
 
-// ---------------------------------------------------------
-// INPUTS
-// ---------------------------------------------------------
-var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4');
-var co  = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO');
+// // ---------------------------------------------------------
+// // INPUTS
+// // ---------------------------------------------------------
+// var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4');
+// var co  = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO');
 
-var startYear = 2010;
-var endYear = 2025;
-var AOI = aoi;
+// var startYear = 2010;
+// var endYear = 2025;
+// var AOI = aoi;
 
-// ----------------------------------------------
-// FUNCTION: Extract NDVI Composites From Dictionary
-// ----------------------------------------------
-function getNDVIfromDictionary(year, month) {
-  var yearDict = ee.Dictionary(composites[year]);
-  var monthlyImg = ee.Image(yearDict.get(month));
-  return monthlyImg;
-}
+// // ----------------------------------------------
+// // FUNCTION: Extract NDVI Composites From Dictionary
+// // ----------------------------------------------
+// function getNDVIfromDictionary(year, month) {
+//   var yearDict = ee.Dictionary(composites[year]);
+//   var monthlyImg = ee.Image(yearDict.get(month));
+//   return monthlyImg;
+// }
 
-// ----------------------------------------------
-// FUNCTION: Monthly S5P Mean for CH4 and CO
-// ----------------------------------------------
-function monthlyMean_S5P(collection, year, month, bandName) {
-  var start = ee.Date.fromYMD(year, month, 1);
-  var end = start.advance(1, 'month');
+// // ----------------------------------------------
+// // FUNCTION: Monthly S5P Mean for CH4 and CO
+// // ----------------------------------------------
+// function monthlyMean_S5P(collection, year, month, bandName) {
+//   var start = ee.Date.fromYMD(year, month, 1);
+//   var end = start.advance(1, 'month');
 
-  return collection
-    .filterDate(start, end)
-    .filterBounds(AOI)
-    .select(bandName)
-    .mean()
-    .clip(AOI)
-    .set({
-      'year': year,
-      'month': month,
-      'system:time_start': start.millis()
-    });
-}
+//   return collection
+//     .filterDate(start, end)
+//     .filterBounds(AOI)
+//     .select(bandName)
+//     .mean()
+//     .clip(AOI)
+//     .set({
+//       'year': year,
+//       'month': month,
+//       'system:time_start': start.millis()
+//     });
+// }
 
-// ------------------------------------------------
-// LOOP → BUILD STRUCTURE
-// ------------------------------------------------
-var ch4List = [];
-var coList = [];
-var ndviList = [];
+// // ------------------------------------------------
+// // LOOP → BUILD STRUCTURE
+// // ------------------------------------------------
+// var ch4List = [];
+// var coList = [];
+// var ndviList = [];
 
-var ch4AnomList = [];
-var coAnomList  = [];
+// var ch4AnomList = [];
+// var coAnomList  = [];
 
-var ch4TS = [];
-var coTS  = [];
+// var ch4TS = [];
+// var coTS  = [];
 
-for (var y = startYear; y <= endYear; y++) {
-  for (var m = 1; m <= 12; m++) {
+// for (var y = startYear; y <= endYear; y++) {
+//   for (var m = 1; m <= 12; m++) {
 
-    // ------------------------------------------
-    // NDVI FROM DICTIONARY (Phase 4 output)
-    // ------------------------------------------
-    var ndvi = getNDVIfromDictionary(y, m);
-    var ndviExists = ndvi !== null;
+//     // ------------------------------------------
+//     // NDVI FROM DICTIONARY (Phase 4 output)
+//     // ------------------------------------------
+//     var ndvi = getNDVIfromDictionary(y, m);
+//     var ndviExists = ndvi !== null;
 
-    if (ndviExists) {
+//     if (ndviExists) {
 
-      // Monthly CH4
-      var ch4m = monthlyMean_S5P(ch4, y, m, 'CH4_column_volume_mixing_ratio_dry_air');
-      var com  = monthlyMean_S5P(co,  y, m, 'CO_column_number_density');
+//       // Monthly CH4
+//       var ch4m = monthlyMean_S5P(ch4, y, m, 'CH4_column_volume_mixing_ratio_dry_air');
+//       var com  = monthlyMean_S5P(co,  y, m, 'CO_column_number_density');
 
-      ch4List.push(ch4m);
-      coList.push(com);
-      ndviList.push(ndvi.set({year:y, month:m}));
+//       ch4List.push(ch4m);
+//       coList.push(com);
+//       ndviList.push(ndvi.set({year:y, month:m}));
 
-      // Add Time-series values
-      ch4TS.push(ch4m.reduceRegion({
-        reducer: ee.Reducer.mean(),
-        geometry: AOI,
-        scale: 5000,
-        maxPixels: 1e13
-      }).set({year:y, month:m}));
+//       // Add Time-series values
+//       ch4TS.push(ch4m.reduceRegion({
+//         reducer: ee.Reducer.mean(),
+//         geometry: AOI,
+//         scale: 5000,
+//         maxPixels: 1e13
+//       }).set({year:y, month:m}));
 
-      coTS.push(com.reduceRegion({
-        reducer: ee.Reducer.mean(),
-        geometry: AOI,
-        scale: 5000,
-        maxPixels: 1e13
-      }).set({year:y, month:m}));
+//       coTS.push(com.reduceRegion({
+//         reducer: ee.Reducer.mean(),
+//         geometry: AOI,
+//         scale: 5000,
+//         maxPixels: 1e13
+//       }).set({year:y, month:m}));
 
-    }
-  }
-}
+//     }
+//   }
+// }
 
-// Convert lists to ImageCollections
-var ch4Col  = ee.ImageCollection(ch4List);
-var coCol   = ee.ImageCollection(coList);
-var ndviCol = ee.ImageCollection(ndviList);
+// // Convert lists to ImageCollections
+// var ch4Col  = ee.ImageCollection(ch4List);
+// var coCol   = ee.ImageCollection(coList);
+// var ndviCol = ee.ImageCollection(ndviList);
 
-// -----------------------------------------------------------
-// ANOMALIES
-// -----------------------------------------------------------
-var ch4Mean = ch4Col.mean();
-var coMean  = coCol.mean();
+// // -----------------------------------------------------------
+// // ANOMALIES
+// // -----------------------------------------------------------
+// var ch4Mean = ch4Col.mean();
+// var coMean  = coCol.mean();
 
-var ch4Anom = ch4Col.map(function(img){ return img.subtract(ch4Mean).set(img.toDictionary()); });
-var coAnom  = coCol.map(function(img){ return img.subtract(coMean).set(img.toDictionary()); });
+// var ch4Anom = ch4Col.map(function(img){ return img.subtract(ch4Mean).set(img.toDictionary()); });
+// var coAnom  = coCol.map(function(img){ return img.subtract(coMean).set(img.toDictionary()); });
 
-// -----------------------------------------------------------
-// CORRELATION (CH4–NDVI & CO–NDVI)
-// -----------------------------------------------------------
-function pairForCorrelation(gasCol, ndviCol, bandGas, bandNDVI) {
-  return ee.ImageCollection(gasCol.iterate(function(gImg, list){
-    gImg = ee.Image(gImg);
-    var y = gImg.get('year');
-    var m = gImg.get('month');
+// // -----------------------------------------------------------
+// // CORRELATION (CH4–NDVI & CO–NDVI)
+// // -----------------------------------------------------------
+// function pairForCorrelation(gasCol, ndviCol, bandGas, bandNDVI) {
+//   return ee.ImageCollection(gasCol.iterate(function(gImg, list){
+//     gImg = ee.Image(gImg);
+//     var y = gImg.get('year');
+//     var m = gImg.get('month');
 
-    var ndvi = ndviCol.filter(ee.Filter.eq('year', y))
-                      .filter(ee.Filter.eq('month', m))
-                      .first();
+//     var ndvi = ndviCol.filter(ee.Filter.eq('year', y))
+//                       .filter(ee.Filter.eq('month', m))
+//                       .first();
 
-    return ee.List(list).add(
-      gImg.addBands(ndvi.select('NDVI'))
-          .set({year:y, month:m})
-    );
-  }, ee.List([])));
-}
+//     return ee.List(list).add(
+//       gImg.addBands(ndvi.select('NDVI'))
+//           .set({year:y, month:m})
+//     );
+//   }, ee.List([])));
+// }
 
-var ch4_ndvi_pairs = ee.ImageCollection(pairForCorrelation(ch4Col, ndviCol, 'CH4', 'NDVI'));
-var co_ndvi_pairs  = ee.ImageCollection(pairForCorrelation(coCol, ndviCol, 'CO',  'NDVI'));
+// var ch4_ndvi_pairs = ee.ImageCollection(pairForCorrelation(ch4Col, ndviCol, 'CH4', 'NDVI'));
+// var co_ndvi_pairs  = ee.ImageCollection(pairForCorrelation(coCol, ndviCol, 'CO',  'NDVI'));
 
-var ch4_ndvi_corr = ch4_ndvi_pairs.reduce(ee.Reducer.pearsonsCorrelation())
-                                 .select('correlation');
+// var ch4_ndvi_corr = ch4_ndvi_pairs.reduce(ee.Reducer.pearsonsCorrelation())
+//                                 .select('correlation');
 
-var co_ndvi_corr  = co_ndvi_pairs.reduce(ee.Reducer.pearsonsCorrelation())
-                                 .select('correlation');
+// var co_ndvi_corr  = co_ndvi_pairs.reduce(ee.Reducer.pearsonsCorrelation())
+//                                 .select('correlation');
 
-// -----------------------------------------------------------
-// VISUALIZATION
-// -----------------------------------------------------------
-var ch4Vis = {min: 0.000015, max: 0.000020, palette:['blue','cyan','green','yellow','red']};
-var coVis  = {min: 0.02, max: 0.08, palette:['purple','blue','cyan','yellow','red']};
-var anomVis = {min:-0.02, max:0.02, palette:['blue','white','red']};
-var corrVis = {min:-1, max:1, palette:['blue','white','red']};
+// // -----------------------------------------------------------
+// // VISUALIZATION
+// // -----------------------------------------------------------
+// var ch4Vis = {min: 0.000015, max: 0.000020, palette:['blue','cyan','green','yellow','red']};
+// var coVis  = {min: 0.02, max: 0.08, palette:['purple','blue','cyan','yellow','red']};
+// var anomVis = {min:-0.02, max:0.02, palette:['blue','white','red']};
+// var corrVis = {min:-1, max:1, palette:['blue','white','red']};
 
-// Add layers
-Map.addLayer(ch4Col.first(), ch4Vis, 'CH4 (Sample Month)');
-Map.addLayer(coCol.first(), coVis, 'CO (Sample Month)');
-Map.addLayer(ch4Anom.first(), anomVis, 'CH4 Anomaly');
-Map.addLayer(coAnom.first(), anomVis, 'CO Anomaly');
-Map.addLayer(ch4_ndvi_corr, corrVis, 'CH4–NDVI Correlation');
-Map.addLayer(co_ndvi_corr, corrVis, 'CO–NDVI Correlation');
+// // Add layers
+// Map.addLayer(ch4Col.first(), ch4Vis, 'CH4 (Sample Month)');
+// Map.addLayer(coCol.first(), coVis, 'CO (Sample Month)');
+// Map.addLayer(ch4Anom.first(), anomVis, 'CH4 Anomaly');
+// Map.addLayer(coAnom.first(), anomVis, 'CO Anomaly');
+// Map.addLayer(ch4_ndvi_corr, corrVis, 'CH4–NDVI Correlation');
+// Map.addLayer(co_ndvi_corr, corrVis, 'CO–NDVI Correlation');
 
-Map.centerObject(AOI, 9);
+// Map.centerObject(AOI, 9);
 
-// -----------------------------------------------------------
-// CHARTS: Time-Series
-// -----------------------------------------------------------
-var ch4Chart = ui.Chart.feature.byFeature(ee.FeatureCollection(ch4TS), 'month', ['CH4_column_volume_mixing_ratio_dry_air'])
-  .setChartType('LineChart')
-  .setOptions({
-    title: 'CH₄ Monthly Time-Series',
-    hAxis: {title: 'Month'},
-    vAxis: {title: 'CH₄ (vmr)'},
-    lineWidth: 2
+// // -----------------------------------------------------------
+// // CHARTS: Time-Series
+// // -----------------------------------------------------------
+// var ch4Chart = ui.Chart.feature.byFeature(ee.FeatureCollection(ch4TS), 'month', ['CH4_column_volume_mixing_ratio_dry_air'])
+//   .setChartType('LineChart')
+//   .setOptions({
+//     title: 'CH₄ Monthly Time-Series',
+//     hAxis: {title: 'Month'},
+//     vAxis: {title: 'CH₄ (vmr)'},
+//     lineWidth: 2
+//   });
+
+// var coChart = ui.Chart.feature.byFeature(ee.FeatureCollection(coTS), 'month', ['CO_column_number_density'])
+//   .setChartType('LineChart')
+//   .setOptions({
+//     title: 'CO Monthly Time-Series',
+//     hAxis: {title: 'Month'},
+//     vAxis: {title: 'CO (mol/m²)'},
+//     lineWidth: 2
+//   });
+
+// print(ch4Chart);
+// print(coChart);
+
+// // -----------------------------------------------------------
+// // EXPORTS
+// // -----------------------------------------------------------
+// Export.image.toDrive({
+//   image: ch4_ndvi_corr,
+//   description: 'CH4_NDVI_Correlation',
+//   folder: 'Phase5',
+//   fileNamePrefix: 'CH4_NDVI_Corr',
+//   region: AOI,
+//   scale: 5000,
+//   maxPixels: 1e13
+// });
+
+// Export.image.toDrive({
+//   image: co_ndvi_corr,
+//   description: 'CO_NDVI_Correlation',
+//   folder: 'Phase5',
+//   fileNamePrefix: 'CO_NDVI_Corr',
+//   region: AOI,
+//   scale: 5000,
+//   maxPixels: 1e13
+// });
+
+// // Export Time-Series CSV
+// Export.table.toDrive({
+//   collection: ee.FeatureCollection(ch4TS),
+//   description:'CH4_TimeSeries',
+//   folder:'Phase5',
+//   fileNamePrefix:'CH4_TS'
+// });
+
+// Export.table.toDrive({
+//   collection: ee.FeatureCollection(coTS),
+//   description:'CO_TimeSeries',
+//   folder:'Phase5',
+//   fileNamePrefix:'CO_TS'
+// });
+
+
+// ======================================================================
+//  NDVI — CH4 & CO CORRELATIONS  (FINAL WORKING VERSION)
+// ======================================================================
+
+// --- Ensure NDVI collection has band name 'NDVI' only
+var NDVI2 = monthlyNDVIcol
+  .select('NDVI')
+  .map(function(img){
+    return img.set('system:time_start', img.get('system:time_start'));
   });
 
-var coChart = ui.Chart.feature.byFeature(ee.FeatureCollection(coTS), 'month', ['CO_column_number_density'])
-  .setChartType('LineChart')
-  .setOptions({
-    title: 'CO Monthly Time-Series',
-    hAxis: {title: 'Month'},
-    vAxis: {title: 'CO (mol/m²)'},
-    lineWidth: 2
+// --- Prepare CH4 and CO collections with correct time keys
+var CH4_2 = monthlyCH4
+  .select('CH4_column_volume_mixing_ratio_dry_air')
+  .map(function(img){
+    return img.set('system:time_start', img.get('system:time_start'));
   });
 
-print(ch4Chart);
-print(coChart);
+var CO_2 = monthlyCO
+  .select('CO_column_number_density')
+  .map(function(img){
+    return img.set('system:time_start', img.get('system:time_start'));
+  });
 
-// -----------------------------------------------------------
-// EXPORTS
-// -----------------------------------------------------------
+// ---------------------------
+// JOIN FUNCTION for time alignment
+// ---------------------------
+var timeFilter = ee.Filter.equals({
+  leftField: 'system:time_start',
+  rightField: 'system:time_start'
+});
+
+// ======================================================================
+// 1) NDVI — CH4 CORRELATION
+// ======================================================================
+var joinedCH4 = ee.Join.inner().apply(NDVI2, CH4_2, timeFilter);
+
+var CH4paired = ee.ImageCollection(
+  joinedCH4.map(function(pair){
+    var ndviImg = ee.Image(pair.get('primary'));
+    var ch4Img  = ee.Image(pair.get('secondary'));
+    return ndviImg.addBands(ch4Img).copyProperties(ndviImg, ['system:time_start']);
+  })
+);
+
+// Run Pearson correlation
+var CH4_corr = CH4paired.reduce(ee.Reducer.pearsonsCorrelation())
+  .rename('corr_CH4_NDVI')
+  .clip(aoi);
+
+// Add to map
+Map.addLayer(CH4_corr, 
+  {min:-1, max:1, palette:['red','white','blue']},
+  'NDVI–CH4 Correlation'
+);
+
+// ======================================================================
+// 2) NDVI — CO CORRELATION
+// ======================================================================
+var joinedCO = ee.Join.inner().apply(NDVI2, CO_2, timeFilter);
+
+var COpaired = ee.ImageCollection(
+  joinedCO.map(function(pair){
+    var ndviImg = ee.Image(pair.get('primary'));
+    var coImg   = ee.Image(pair.get('secondary'));
+    return ndviImg.addBands(coImg).copyProperties(ndviImg, ['system:time_start']);
+  })
+);
+
+// Run Pearson correlation
+var CO_corr = COpared.reduce(ee.Reducer.pearsonsCorrelation())
+  .rename('corr_CO_NDVI')
+  .clip(aoi);
+
+// Add to map
+Map.addLayer(CO_corr,
+  {min:-1, max:1, palette:['red','white','blue']},
+  'NDVI–CO Correlation'
+);
+
+// ======================================================================
+// EXPORT BOTH CORRELATION RASTERS
+// ======================================================================
 Export.image.toDrive({
-  image: ch4_ndvi_corr,
-  description: 'CH4_NDVI_Correlation',
-  folder: 'Phase5',
-  fileNamePrefix: 'CH4_NDVI_Corr',
-  region: AOI,
-  scale: 5000,
+  image: CH4_corr.toFloat(),
+  description: 'NDVI_CH4_Correlation',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'Corr_NDVI_CH4',
+  region: aoi,
+  scale: 7000,
   maxPixels: 1e13
 });
 
 Export.image.toDrive({
-  image: co_ndvi_corr,
-  description: 'CO_NDVI_Correlation',
-  folder: 'Phase5',
-  fileNamePrefix: 'CO_NDVI_Corr',
-  region: AOI,
-  scale: 5000,
+  image: CO_corr.toFloat(),
+  description: 'NDVI_CO_Correlation',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'Corr_NDVI_CO',
+  region: aoi,
+  scale: 7000,
   maxPixels: 1e13
 });
 
-// Export Time-Series CSV
-Export.table.toDrive({
-  collection: ee.FeatureCollection(ch4TS),
-  description:'CH4_TimeSeries',
-  folder:'Phase5',
-  fileNamePrefix:'CH4_TS'
-});
-
-Export.table.toDrive({
-  collection: ee.FeatureCollection(coTS),
-  description:'CO_TimeSeries',
-  folder:'Phase5',
-  fileNamePrefix:'CO_TS'
-});
+print('Correlation maps computed successfully ✔');
