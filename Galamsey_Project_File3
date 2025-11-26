@@ -687,6 +687,8 @@ Map.add(legendPanel);
 
 var yearList = ee.List([]);
 var areaList = ee.List([]);
+// Dictionary to store degraded area per year
+var areaDict = ee.Dictionary({});
 
 for (var yr = startYear; yr <= endYear; yr++) {
   
@@ -714,6 +716,8 @@ for (var yr = startYear; yr <= endYear; yr++) {
 
   // Convert to hectares
   var areaHa = ee.Number(degradedArea.get("area")).divide(10000);
+
+  areaDict = areaDict.set(yr.toString(), areaHa);
 
   // Print to console
   //print("Degraded Area (" + yr + "): ", areaHa);
@@ -1005,7 +1009,7 @@ var endDate   = '2025-12-31';
 var AOI = aoi; // ensure `aoi` exists as a geometry/feature in your script
 var monthlyNDVIcol = monthlyNDVIcol || ee.ImageCollection([]); // provide from earlier phases
 var scaleReduce = 7000; // scale for S5P reductions/exports (coarse)
-
+var minedAreaTS = 
 // ---------------------------
 // 1. Load Sentinel-5P CH4 & CO
 // ---------------------------
@@ -1136,37 +1140,43 @@ function addIndices(img){
     out = img.select(['ndvi']).rename('NDVI');
   }
 
-  // attempt NDWI & MNDWI if green/nir/swir1 exist
-  if (bandNames.contains('GREEN') || bandNames.contains('green') || bandNames.contains('B3') || bandNames.contains('B02')){
-    var green = img.select(['GREEN']).first();
-    // we'll try several common names
-    var g = ee.Image(0);
-    try{ g = img.select(['GREEN']); } catch(e){}
-    try{ g = img.select(['green']); } catch(e){}
-    try{ g = img.select(['B3']); } catch(e){}
-    try{ g = img.select(['B02']); } catch(e){}
-    // NIR
-    var nir = ee.Image(0);
-    try{ nir = img.select(['NIR']); } catch(e){}
-    try{ nir = img.select(['nir']); } catch(e){}
-    try{ nir = img.select(['B5']); } catch(e){}
-    try{ nir = img.select(['B08']); } catch(e){}
-    // SWIR1
-    var swir1 = ee.Image(0);
-    try{ swir1 = img.select(['SWIR1']); } catch(e){}
-    try{ swir1 = img.select(['swir1']); } catch(e){}
-    try{ swir1 = img.select(['B6']); } catch(e){}
-    try{ swir1 = img.select(['B11']); } catch(e){}
-
-    // only compute if band objects are not empty images (best-effort)
-    // Compute NDWI and MNDWI using normalizedDifference when possible
-    try{
-      var ndwi = img.normalizedDifference(['green','nir']).rename('NDWI');
-      var mndwi = img.normalizedDifference(['green','swir1']).rename('MNDWI');
-      out = out.addBands(ndwi).addBands(mndwi);
-    }catch(e){ /* skip */ }
+// attempt NDWI & MNDWI if green/nir/swir1 exist
+if (bandNames.contains('GREEN') || bandNames.contains('green') || bandNames.contains('B3') || bandNames.contains('B02')) {
+  
+  // Green band
+  var green = null;
+  if (bandNames.contains('GREEN')) green = img.select('GREEN');
+  else if (bandNames.contains('green')) green = img.select('green');
+  else if (bandNames.contains('B3')) green = img.select('B3');
+  else if (bandNames.contains('B02')) green = img.select('B02');
+  
+  // NIR band
+  var nir = null;
+  if (bandNames.contains('NIR')) nir = img.select('NIR');
+  else if (bandNames.contains('nir')) nir = img.select('nir');
+  else if (bandNames.contains('B5')) nir = img.select('B5');
+  else if (bandNames.contains('B08')) nir = img.select('B08');
+  
+  // SWIR1 band
+  var swir1 = null;
+  if (bandNames.contains('SWIR1')) swir1 = img.select('SWIR1');
+  else if (bandNames.contains('swir1')) swir1 = img.select('swir1');
+  else if (bandNames.contains('B6')) swir1 = img.select('B6');
+  else if (bandNames.contains('B11')) swir1 = img.select('B11');
+  
+  // Compute NDWI and MNDWI only if bands exist
+  if (green && nir) {
+    var ndwi = green.subtract(nir).divide(green.add(nir)).rename('NDWI');   // normalizedDifference alternative
+    out = out.addBands(ndwi);
   }
-  return out;
+  if (green && swir1) {
+    var mndwi = green.subtract(swir1).divide(green.add(swir1)).rename('MNDWI'); // normalizedDifference alternative
+    out = out.addBands(mndwi);
+  }
+}
+
+return out;
+
 }
 
 // Prepare NDVI time series from monthlyNDVIcol if available
