@@ -728,25 +728,25 @@ legendPanel.add(ui.Label(yr + ': ' + areaHa.format('%.2f').getInfo() + ' ha',
 }
 
 
-//TIME-SERIES CHART///
-// Convert yearList to strings for chart labels
-var yearLabels = yearList.map(function(y){
-  return ee.Number(y).format('%d'); // formats as '2020', '2021', etc.
-});
+// //TIME-SERIES CHART///
+// // Convert yearList to strings for chart labels
+// var yearLabels = yearList.map(function(y){
+//   return ee.Number(y).format('%d'); // formats as '2020', '2021', etc.
+// });
 
-// Create chart
-var chart = ui.Chart.array.values(areaList, 0, yearLabels)
-  .setChartType('LineChart')
-  .setOptions({
-    title: 'Degraded / Active Mining Area Over Time',
-    hAxis: {title: 'Year'},
-    vAxis: {title: 'Area (ha)'},
-    pointSize: 5,
-    lineWidth: 2,
-     colors: ['red'] 
-  });
+// // Create chart
+// var chart = ui.Chart.array.values(areaList, 0, yearLabels)
+//   .setChartType('LineChart')
+//   .setOptions({
+//     title: 'Degraded / Active Mining Area Over Time',
+//     hAxis: {title: 'Year'},
+//     vAxis: {title: 'Area (ha)'},
+//     pointSize: 5,
+//     lineWidth: 2,
+//     colors: ['red'] 
+//   });
 
-print(chart);
+// print(chart);
 
 
 //................
