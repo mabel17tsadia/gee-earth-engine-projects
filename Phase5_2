@@ -1,3 +1,185 @@
+// ============================================================================
+// PHASE 5 PART 2: WATER IMPACT INDICES + CO2 vs Mined Area
+// ============================================================================
+
+// ---------------------------
+// 0. Sentinel-2 SR: Cloud Mask + AOI/Date Filter
+// ---------------------------
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR')
+  .filterBounds(AOI)
+  .filterDate(ee.Date.fromYMD(startYear,1,1), ee.Date.fromYMD(endYear,12,31))
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20));
+
+// Mask clouds/shadows using SCL band
+function maskS2Clouds(image) {
+  var scl = image.select('SCL');
+  var mask = scl.neq(3)   // cloud shadow
+             .and(scl.neq(8)) // cirrus
+             .and(scl.neq(9)) // clouds
+             .and(scl.neq(1)); // saturated/defective
+  return image.updateMask(mask);
+}
+
+var s2_clean = s2.map(maskS2Clouds);
+
+// ---------------------------
+// 1. Compute Water Indices (NDWI, MNDWI)
+// ---------------------------
+function addWaterIndices(image){
+  var ndwi = image.normalizedDifference(['B3','B8']).rename('NDWI');   // Green-NIR
+  var mndwi = image.normalizedDifference(['B3','B11']).rename('MNDWI'); // Green-SWIR1
+  return image.addBands([ndwi,mndwi])
+              .set('year', image.date().get('year'))
+              .set('month', image.date().get('month'));
+}
+
+var s2_water = s2_clean.map(addWaterIndices);
+
+// ---------------------------
+// 2. Aggregate Monthly Mean NDWI / MNDWI
+// ---------------------------
+var years = ee.List.sequence(startYear, endYear);
+var months = ee.List.sequence(1,12);
+
+function monthlyMeanWater(col, bandName){
+  var monthly = years.map(function(y){
+    return months.map(function(m){
+      var imgs = col.filter(ee.Filter.calendarRange(y,y,'year'))
+                    .filter(ee.Filter.calendarRange(m,m,'month'));
+      return ee.Algorithms.If(
+        imgs.size().gt(0),
+        imgs.mean().select(bandName)
+          .set('year', y)
+          .set('month', m)
+          .set('system:time_start', ee.Date.fromYMD(y,m,1).millis()),
+        null
+      );
+    });
+  }).flatten();
+
+  return ee.ImageCollection.fromImages(monthly)
+           .filter(ee.Filter.notNull(['system:time_start']));
+}
+
+var monthlyNDWI  = monthlyMeanWater(s2_water,'NDWI');
+var monthlyMNDWI = monthlyMeanWater(s2_water,'MNDWI');
+
+// ---------------------------
+// 3. Optional: Charts
+// ---------------------------
+print(ui.Chart.image.series(monthlyNDWI, AOI, ee.Reducer.mean(), 30, 'system:time_start')
+      .setOptions({title:'Monthly NDWI', lineWidth:2, pointSize:4}));
+
+print(ui.Chart.image.series(monthlyMNDWI, AOI, ee.Reducer.mean(), 30, 'system:time_start')
+      .setOptions({title:'Monthly MNDWI', lineWidth:2, pointSize:4}));
+
+// ---------------------------
+// 4. Export monthly Water Indices
+// ---------------------------
+Export.image.toDrive({
+  image: monthlyNDWI.toBands().clip(AOI),
+  description: 'Monthly_NDWI',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'Monthly_NDWI',
+  scale: 30,
+  maxPixels: 1e10
+});
+
+Export.image.toDrive({
+  image: monthlyMNDWI.toBands().clip(AOI),
+  description: 'Monthly_MNDWI',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'Monthly_MNDWI',
+  scale: 30,
+  maxPixels: 1e10
+});
+
+// ---------------------------
+// 5. Correlate CO anomalies with Mined Area (yearly)
+// ---------------------------
+// areaDict assumed to exist: ee.Dictionary({year: mined_area, ...})
+
+// Extract yearly CO anomaly mean
+var yearlyCOmean = ee.List.sequence(startYear, endYear).map(function(y){
+  var imgs = CO_anom.filter(ee.Filter.eq('year', y));
+  return ee.Algorithms.If(
+    imgs.size().gt(0),
+    ee.Number(imgs.mean()
+      .reduceRegion({
+        reducer: ee.Reducer.mean(),
+        geometry: AOI,
+        scale: 7000,
+        maxPixels: 1e10
+      }).get('ANOM_CO')),
+    null
+  );
+});
+
+// Extract mined area for the same years
+var minedAreas = ee.List.sequence(startYear, endYear).map(function(y){
+  return ee.Number(areaDict.get(ee.String(y)));
+});
+
+// Compute Pearson correlation manually over yearly values
+function pearsonCorrelation(xList, yList){
+  var n = xList.length;
+  var xMean = xList.reduce(ee.Reducer.mean());
+  var yMean = yList.reduce(ee.Reducer.mean());
+
+  var cov = ee.Number(0);
+  var xVar = ee.Number(0);
+  var yVar = ee.Number(0);
+
+  for (var i=0; i<n; i++){
+    var xi = ee.Number(xList.get(i));
+    var yi = ee.Number(yList.get(i));
+    cov = cov.add(xi.subtract(xMean).multiply(yi.subtract(yMean)));
+    xVar = xVar.add(xi.subtract(xMean).pow(2));
+    yVar = yVar.add(yi.subtract(yMean).pow(2));
+  }
+  return cov.divide(xVar.sqrt().multiply(yVar.sqrt()));
+}
+
+// Remove nulls
+var validIndices = ee.List.sequence(0, yearlyCOmean.size().subtract(1))
+  .filter(function(i){ return yearlyCOmean.get(i) && minedAreas.get(i); });
+
+var coVals = validIndices.map(function(i){ return yearlyCOmean.get(i); });
+var areaVals = validIndices.map(function(i){ return minedAreas.get(i); });
+
+var corrCO_Mined = pearsonCorrelation(coVals, areaVals);
+print('Pearson correlation CO anomaly vs Mined Area:', corrCO_Mined);
+
+// ---------------------------
+// 6. Summary Impact Table (CH4, CO, NDWI, MNDWI, mined area)
+// ---------------------------
+var impactTable = ee.FeatureCollection(
+  ee.List.sequence(startYear, endYear).map(function(y){
+    return ee.Feature(null,{
+      year: y,
+      mean_CH4: ee.Number(monthlyCH4.filter(ee.Filter.eq('year',y)).mean()
+        .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:7000, maxPixels:1e10}).get('CH4')),
+      mean_CO: ee.Number(monthlyCO.filter(ee.Filter.eq('year',y)).mean()
+        .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:7000, maxPixels:1e10}).get('CO')),
+      mined_area: ee.Number(areaDict.get(ee.String(y))),
+      mean_NDWI: ee.Number(monthlyNDWI.filter(ee.Filter.eq('year',y)).mean()
+        .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:30, maxPixels:1e10}).get('NDWI')),
+      mean_MNDWI: ee.Number(monthlyMNDWI.filter(ee.Filter.eq('year',y)).mean()
+        .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:30, maxPixels:1e10}).get('MNDWI'))
+    });
+  })
+);
+
+// Export summary table
+Export.table.toDrive({
+  collection: impactTable,
+  description: 'Impact_Summary_Table',
+  folder: 'Galamsey_Project_BDG',
+  fileFormat: 'CSV'
+});
+
+
+
 // ---------------------------
 // 0. AOI & Parameters
 // ---------------------------
