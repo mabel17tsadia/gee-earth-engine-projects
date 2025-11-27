@@ -688,7 +688,7 @@ Map.add(legendPanel);
 var yearList = ee.List([]);
 var areaList = ee.List([]);
 // Dictionary to store degraded area per year
-var areaDict = ee.Dictionary({});
+//var areaDict = ee.Dictionary({});
 
 for (var yr = startYear; yr <= endYear; yr++) {
   
@@ -717,7 +717,7 @@ for (var yr = startYear; yr <= endYear; yr++) {
   // Convert to hectares
   var areaHa = ee.Number(degradedArea.get("area")).divide(10000);
 
-  areaDict = areaDict.set(yr.toString(), areaHa);
+ // areaDict = areaDict.set(yr.toString(), areaHa);
 
   // Print to console
   //print("Degraded Area (" + yr + "): ", areaHa);
