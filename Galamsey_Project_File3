@@ -953,42 +953,51 @@ legend.add(makeLegendRow('yellow', 'Stable'));
 legend.add(makeLegendRow('green', 'Recovering'));
 Map.add(legend);
 
-// // ---------------------------
-// // 6. NDVI Trend Chart (Optional)
-// // ---------------------------
-// // Compute mean NDVI per month per year
-// var monthlyStats = monthlyNDVIcol.map(function(img){
-//   var mean = img.reduceRegion({
-//     reducer: ee.Reducer.mean(),
-//     geometry: aoi,
-//     scale: 30,
-//     maxPixels: 1e13
-//   }).get('NDVI');
-//   return ee.Feature(null, {
-//     'year': img.get('year'),
-//     'month': img.get('month'),
-//     'NDVI': mean
-//   });
-// });
+// ---------------------------
+// 6. NDVI Trend Chart (Optional)
+// ---------------------------
+// Compute mean NDVI per month per year
+var monthlyStats = monthlyNDVIcol.map(function(img){
+  var mean = img.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: aoi,
+    scale: 30,
+    maxPixels: 1e13
+  }).get('NDVI');
+  return ee.Feature(null, {
+    'year': img.get('year'),
+    'month': img.get('month'),
+    'NDVI': mean
+  });
+});
 
-// var chart = ui.Chart.feature.groups({
-//   features: monthlyStats,
-//   xProperty: 'month',
-//   yProperty: 'NDVI',
-//   seriesProperty: 'year'
-// })
-// .setChartType('LineChart')
-// .setOptions({
-//   title: 'Monthly NDVI Trend (2010–2025)',
-//   hAxis:{title:'Month'},
-//   vAxis:{title:'Mean NDVI'},
-//   lineWidth: 2,
-//   pointSize: 4,
-//   colors: ['red','blue','green','orange','purple','brown','pink','cyan','magenta',
-//           'olive','navy','gold','teal','maroon','grey','darkgreen','darkred']
-// });
+var chart = ui.Chart.feature.groups({
+  features: monthlyStats,
+  xProperty: 'month',
+  yProperty: 'NDVI',
+  seriesProperty: 'year'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'Monthly NDVI Trend (2010–2025)',
+  hAxis:{title:'Month'},
+  vAxis:{title:'Mean NDVI'},
+  lineWidth: 2,
+  pointSize: 4,
+  colors: ['red','blue','green','orange','purple','brown','pink','cyan','magenta',
+          'olive','navy','gold','teal','maroon','grey','darkgreen','darkred']
+});
 
-// print(chart);
+print(chart);
+
+// Export NDVI chart data as CSV
+Export.table.toDrive({
+  collection: monthlyStats,
+  description: 'NDVI_Monthly_Trend_Data',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'NDVI_Monthly_Trend',
+  fileFormat: 'CSV'
+});
 
 
 // // ---------------------------------------------------------
