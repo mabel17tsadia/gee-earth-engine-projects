@@ -404,7 +404,7 @@ var legends = ui.Panel({
 });
 
 legends.add(ui.Label({
-  value: 'Spectral Indices (2025)',
+  value: 'Spectral Indices',
   style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
 }));
 
@@ -688,7 +688,7 @@ Map.add(legendPanel);
 var yearList = ee.List([]);
 var areaList = ee.List([]);
 // Dictionary to store degraded area per year
-//var areaDict = ee.Dictionary({});
+var areaDict = ee.Dictionary({});
 
 for (var yr = startYear; yr <= endYear; yr++) {
   
@@ -717,7 +717,7 @@ for (var yr = startYear; yr <= endYear; yr++) {
   // Convert to hectares
   var areaHa = ee.Number(degradedArea.get("area")).divide(10000);
 
- // areaDict = areaDict.set(yr.toString(), areaHa);
+  areaDict = areaDict.set(yr.toString(), areaHa);
 
   // Print to console
   //print("Degraded Area (" + yr + "): ", areaHa);
@@ -1046,7 +1046,7 @@ function monthlyMean(collection, bandName) {
   }).flatten();
 
   return ee.ImageCollection.fromImages(monthly)
-           .filter(ee.Filter.notNull(['system:time_start']));
+          .filter(ee.Filter.notNull(['system:time_start']));
 }
 
 var monthlyCH4 = monthlyMean(ch4, "CH4");
@@ -1146,7 +1146,7 @@ var CO_corr = NDVI_CO_merged
 
 Export.image.toDrive({
   image: CH4_corr.clip(AOI),
-  description: 'CH4_NDVI_correlation',
+  description: 'Prestea_Huni_CH4_NDVI_correlation',
   folder: 'Galamsey_Project_BDG',
   fileNamePrefix: 'CH4_corr',
   scale: 7000,
@@ -1155,7 +1155,7 @@ Export.image.toDrive({
 
 Export.image.toDrive({
   image: CO_corr.clip(AOI),
-  description: 'CO_NDVI_correlation',
+  description: 'Prestea_Huni_CO_NDVI_correlation',
   folder: 'Galamsey_Project_BDG',
   fileNamePrefix: 'CO_corr',
   scale: 7000,
@@ -1164,7 +1164,7 @@ Export.image.toDrive({
 
 Export.image.toDrive({
   image: monthlyCH4.toBands().clip(AOI),
-  description: 'Monthly_CH4',
+  description: 'Prestea_Huni_Monthly_CH4',
   folder: 'Galamsey_Project_BDG',
   fileNamePrefix: 'Monthly_CH4',
   scale: 7000,
@@ -1173,7 +1173,7 @@ Export.image.toDrive({
 
 Export.image.toDrive({
   image: monthlyCO.toBands().clip(AOI),
-  description: 'Monthly_CO',
+  description: 'Prestea_Huni_Monthly_CO',
   folder: 'Galamsey_Project_BDG',
   fileNamePrefix: 'Monthly_CO',
   scale: 7000,
@@ -1187,7 +1187,7 @@ Export.image.toDrive({
 var chartCH4 = ui.Chart.image.series(
   monthlyCH4, AOI, ee.Reducer.mean(), 7000, 'system:time_start'
 ).setOptions({
-  title:'Monthly CH4 (ppbv)',
+  title:'Prestea-Huni Monthly CH4 (ppbv)',
   vAxis:{title:'CH4'},
   lineWidth:2,
   pointSize:4
@@ -1197,7 +1197,7 @@ print(chartCH4);
 var chartCO = ui.Chart.image.series(
   monthlyCO, AOI, ee.Reducer.mean(), 7000, 'system:time_start'
 ).setOptions({
-  title:'Monthly CO (mol/m²)',
+  title:'Prestea-Huni Monthly CO (mol/m²)',
   vAxis:{title:'CO'},
   lineWidth:2,
   pointSize:4
@@ -1207,7 +1207,7 @@ print(chartCO);
 var chartCH4Anom = ui.Chart.image.series(
   CH4_anom, AOI, ee.Reducer.mean(), 7000, 'system:time_start'
 ).setOptions({
-  title:'Monthly CH4 Anomalies',
+  title:'Prestea-Huni Monthly CH4 Anomalies',
   lineWidth:2,
   pointSize:4,
   colors:['#d73027']
@@ -1217,11 +1217,13 @@ print(chartCH4Anom);
 var chartCOAnom = ui.Chart.image.series(
   CO_anom, AOI, ee.Reducer.mean(), 7000, 'system:time_start'
 ).setOptions({
-  title:'Monthly CO Anomalies',
+  title:'Prestea-Huni Monthly CO Anomalies',
   lineWidth:2,
   pointSize:4,
   colors:['#1a9850']
 });
 print(chartCOAnom);
 
-print('PHASE 5 COMPLETE ✔ All layers, charts, exports ready.');
+//print('PHASE 5 COMPLETE ✔ All layers, charts, exports ready.');
+
+
