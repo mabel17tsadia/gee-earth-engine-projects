@@ -1153,41 +1153,41 @@ var CO_corr = NDVI_CO_merged
 // 7. EXPORTS
 // ============================================================================
 
-Export.image.toDrive({
-  image: CH4_corr.clip(AOI),
-  description: 'Prestea_Huni_CH4_NDVI_correlation',
-  folder: 'Galamsey_Project_BDG',
-  fileNamePrefix: 'CH4_corr',
-  scale: 7000,
-  maxPixels: 1e10
-});
+// Export.image.toDrive({
+//   image: CH4_corr.clip(AOI),
+//   description: 'Prestea_Huni_CH4_NDVI_correlation',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'CH4_corr',
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
-Export.image.toDrive({
-  image: CO_corr.clip(AOI),
-  description: 'Prestea_Huni_CO_NDVI_correlation',
-  folder: 'Galamsey_Project_BDG',
-  fileNamePrefix: 'CO_corr',
-  scale: 7000,
-  maxPixels: 1e10
-});
+// Export.image.toDrive({
+//   image: CO_corr.clip(AOI),
+//   description: 'Prestea_Huni_CO_NDVI_correlation',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'CO_corr',
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
-Export.image.toDrive({
-  image: monthlyCH4.toBands().clip(AOI),
-  description: 'Prestea_Huni_Monthly_CH4',
-  folder: 'Galamsey_Project_BDG',
-  fileNamePrefix: 'Monthly_CH4',
-  scale: 7000,
-  maxPixels: 1e10
-});
+// Export.image.toDrive({
+//   image: monthlyCH4.toBands().clip(AOI),
+//   description: 'Prestea_Huni_Monthly_CH4',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'Monthly_CH4',
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
-Export.image.toDrive({
-  image: monthlyCO.toBands().clip(AOI),
-  description: 'Prestea_Huni_Monthly_CO',
-  folder: 'Galamsey_Project_BDG',
-  fileNamePrefix: 'Monthly_CO',
-  scale: 7000,
-  maxPixels: 1e10
-});
+// Export.image.toDrive({
+//   image: monthlyCO.toBands().clip(AOI),
+//   description: 'Prestea_Huni_Monthly_CO',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'Monthly_CO',
+//   scale: 7000,
+//   maxPixels: 1e10
+// });
 
 // ============================================================================
 // 8. TIME-SERIES CHARTS
@@ -1232,6 +1232,94 @@ var chartCOAnom = ui.Chart.image.series(
   colors:['#1a9850']
 });
 print(chartCOAnom);
+
+// Export CH4 monthly mean data (chartCH4)
+var CH4_table = monthlyCH4.map(function(img){
+  return ee.Feature(null, {
+    'date': ee.Date(img.get('system:time_start')).format('YYYY-MM'),
+    'CH4': img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: AOI,
+      scale: 7000,
+      maxPixels: 1e13
+    }).get('CH4')
+  });
+});
+
+Export.table.toDrive({
+  collection: CH4_table,
+  description: 'Prestea_Huni_CH4_timeseries',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'CH4_timeseries',
+  fileFormat: 'CSV'
+});
+
+
+// Export CO monthly mean data (chartCO)
+var CO_table = monthlyCO.map(function(img){
+  return ee.Feature(null, {
+    'date': ee.Date(img.get('system:time_start')).format('YYYY-MM'),
+    'CO': img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: AOI,
+      scale: 7000,
+      maxPixels: 1e13
+    }).get('CO')
+  });
+});
+
+Export.table.toDrive({
+  collection: CO_table,
+  description: 'Prestea_Huni_CO_timeseries',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'CO_timeseries',
+  fileFormat: 'CSV'
+});
+
+
+// Export CH4 anomaly data (chartCH4Anom)
+var CH4_anom_table = CH4_anom.map(function(img){
+  return ee.Feature(null, {
+    'date': ee.Date(img.get('system:time_start')).format('YYYY-MM'),
+    'CH4_anomaly': img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: AOI,
+      scale: 7000,
+      maxPixels: 1e13
+    }).get('ANOM_CH4')
+  });
+});
+
+Export.table.toDrive({
+  collection: CH4_anom_table,
+  description: 'Prestea_Huni_CH4_anomalies',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'CH4_anomalies',
+  fileFormat: 'CSV'
+});
+
+
+// Export CO anomaly data (chartCOAnom)
+var CO_anom_table = CO_anom.map(function(img){
+  return ee.Feature(null, {
+    'date': ee.Date(img.get('system:time_start')).format('YYYY-MM'),
+    'CO_anomaly': img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: AOI,
+      scale: 7000,
+      maxPixels: 1e13
+    }).get('ANOM_CO')
+  });
+});
+
+Export.table.toDrive({
+  collection: CO_anom_table,
+  description: 'Prestea_Huni_CO_anomalies',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'CO_anomalies',
+  fileFormat: 'CSV'
+});
+
 
 //print('PHASE 5 COMPLETE ✔ All layers, charts, exports ready.');
 
