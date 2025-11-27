@@ -1,3 +1,166 @@
+// // ============================================================================
+// // PHASE 5: WATER IMPACT INDICES + CO2 vs Mined Area
+// // ============================================================================
+
+// // ---------------------------
+// // 1. Sentinel-2 Imagery for Water Indices
+// // ---------------------------
+// var s2 = ee.ImageCollection('COPERNICUS/S2_SR')
+//   .filterBounds(AOI)
+//   .filterDate(ee.Date.fromYMD(startYear,1,1), ee.Date.fromYMD(endYear,12,31))
+//   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20));
+
+// // Function to mask clouds using QA60 band
+// function maskS2clouds(image) {
+//   var qa = image.select('QA60');
+//   var cloudMask = qa.bitwiseAnd(1 << 10).eq(0) // Cirrus
+//                 .and(qa.bitwiseAnd(1 << 11).eq(0)); // Clouds
+//   return image.updateMask(cloudMask);
+// }
+
+// var s2_clean = s2.map(maskS2clouds);
+
+// // Compute NDWI and MNDWI
+// function addWaterIndices(image){
+//   var ndwi = image.normalizedDifference(['B3','B8']).rename('NDWI');     // Green-NIR
+//   var mndwi = image.normalizedDifference(['B3','B11']).rename('MNDWI');  // Green-SWIR1
+//   return image.addBands([ndwi,mndwi])
+//               .set('year', image.date().get('year'))
+//               .set('month', image.date().get('month'));
+// }
+
+// var s2_water = s2_clean.map(addWaterIndices);
+
+// // Aggregate to monthly mean
+// var years = ee.List.sequence(startYear, endYear);
+// var months = ee.List.sequence(1,12);
+
+// function monthlyMeanWater(col, bandName){
+//   var monthly = years.map(function(y){
+//     return months.map(function(m){
+//       var imgs = col.filter(ee.Filter.calendarRange(y, y, 'year'))
+//                     .filter(ee.Filter.calendarRange(m, m, 'month'));
+//       return ee.Algorithms.If(
+//         imgs.size().gt(0),
+//         imgs.mean().select(bandName)
+//           .set('year', y)
+//           .set('month', m)
+//           .set('system:time_start', ee.Date.fromYMD(y,m,1).millis()),
+//         null
+//       );
+//     });
+//   }).flatten();
+//   return ee.ImageCollection.fromImages(monthly)
+//           .filter(ee.Filter.notNull(['system:time_start']));
+// }
+
+// var monthlyNDWI  = monthlyMeanWater(s2_water,'NDWI');
+// var monthlyMNDWI = monthlyMeanWater(s2_water,'MNDWI');
+
+// // Optional: chart NDWI
+// var chartNDWI = ui.Chart.image.series(monthlyNDWI, AOI, ee.Reducer.mean(), 30, 'system:time_start')
+//   .setOptions({title:'Monthly NDWI (Water Index)', lineWidth:2, pointSize:4});
+// print(chartNDWI);
+
+// var chartMNDWI = ui.Chart.image.series(monthlyMNDWI, AOI, ee.Reducer.mean(), 30, 'system:time_start')
+//   .setOptions({title:'Monthly MNDWI (Water Index)', lineWidth:2, pointSize:4});
+// print(chartMNDWI);
+
+// // Export monthly water indices
+// Export.image.toDrive({
+//   image: monthlyNDWI.toBands().clip(AOI),
+//   description: 'Monthly_NDWI',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'Monthly_NDWI',
+//   scale: 30,
+//   maxPixels: 1e10
+// });
+
+// Export.image.toDrive({
+//   image: monthlyMNDWI.toBands().clip(AOI),
+//   description: 'Monthly_MNDWI',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'Monthly_MNDWI',
+//   scale: 30,
+//   maxPixels: 1e10
+// });
+
+// // ---------------------------
+// // 2. Correlate CO anomalies with Mined Area
+// // ---------------------------
+
+// // areaDict assumed to exist: ee.Dictionary({year: mined_area, ...})
+
+// // Extract yearly CO anomaly mean
+// var yearlyCOmean = ee.List.sequence(startYear, endYear).map(function(y){
+//   var imgs = CO_anom.filter(ee.Filter.eq('year', y));
+//   return ee.Algorithms.If(
+//     imgs.size().gt(0),
+//     imgs.mean().reduceRegion({
+//       reducer: ee.Reducer.mean(),
+//       geometry: AOI,
+//       scale: 7000,
+//       maxPixels: 1e10
+//     }).get('ANOM_CO'),
+//     null
+//   );
+// });
+
+// // Extract mined area values for same years
+// var minedAreas = ee.List.sequence(startYear, endYear).map(function(y){
+//   return ee.Number(areaDict.get(ee.String(y)));
+// });
+
+// // Combine into array for correlation
+// var coAreaPairs = ee.List.sequence(0, yearlyCOmean.size().subtract(1)).map(function(i){
+//   return [ee.Number(yearlyCOmean.get(i)), ee.Number(minedAreas.get(i))];
+// });
+
+// var coArray = ee.Array(coAreaPairs.map(function(pair){ return ee.List(pair); }));
+// var corrCO_Mined = coArray.reduce('pearsonCorrelation',[0]);
+// print('Pearson correlation CO anomaly vs Mined Area:', corrCO_Mined);
+
+// // ---------------------------
+// // 3. Summarize findings in impact tables
+// // ---------------------------
+
+// var impactTable = ee.FeatureCollection(
+//   ee.List.sequence(startYear, endYear).map(function(y){
+//     return ee.Feature(null, {
+//       year: y,
+//       mean_CH4: ee.Number(monthlyCH4.filter(ee.Filter.eq('year', y)).mean()
+//         .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:7000, maxPixels:1e10}).get('CH4')),
+//       mean_CO: ee.Number(monthlyCO.filter(ee.Filter.eq('year', y)).mean()
+//         .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:7000, maxPixels:1e10}).get('CO')),
+//       mined_area: ee.Number(areaDict.get(ee.String(y))),
+//       mean_NDWI: ee.Number(monthlyNDWI.filter(ee.Filter.eq('year', y)).mean()
+//         .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:30, maxPixels:1e10}).get('NDWI')),
+//       mean_MNDWI: ee.Number(monthlyMNDWI.filter(ee.Filter.eq('year', y)).mean()
+//         .reduceRegion({reducer: ee.Reducer.mean(), geometry: AOI, scale:30, maxPixels:1e10}).get('MNDWI'))
+//     });
+//   })
+// );
+
+// Export.table.toDrive({
+//   collection: impactTable,
+//   description: 'Impact_Summary_Table',
+//   folder: 'Galamsey_Project_BDG',
+//   fileFormat: 'CSV'
+// });
+
+// //print('Phase 5 Water Impact & CO2-Mined Area Analysis Complete ✔');
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================================
 // PHASE 5 PART 2: WATER IMPACT INDICES + CO2 vs Mined Area
 // ============================================================================
