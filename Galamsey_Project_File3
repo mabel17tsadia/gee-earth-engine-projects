@@ -752,6 +752,28 @@ var chart = ui.Chart.array.values(areaList, 0, yearLabels)
 
 print(chart);
 
+// ---------------------------------------------
+// EXPORT DEGRADED / ACTIVE MINING AREA DATA
+// ---------------------------------------------
+
+// Combine yearList + areaList into a FeatureCollection
+var degradedAreaTable = ee.FeatureCollection(
+  ee.List.sequence(0, yearList.length().subtract(1)).map(function(i){
+    return ee.Feature(null, {
+      'year': yearList.get(i),
+      'degraded_area_ha': areaList.get(i)
+    });
+  })
+);
+
+// Export the table as CSV
+Export.table.toDrive({
+  collection: degradedAreaTable,
+  description: 'Degraded_Area_Timeseries',
+  folder: 'Galamsey_Project_BDG',
+  fileNamePrefix: 'Degraded_Area_Trend',
+  fileFormat: 'CSV'
+});
 
 //................
 ////Build NDVI time series (monthly) per pixel
@@ -1003,10 +1025,6 @@ Export.table.toDrive({
 // // ---------------------------------------------------------
 // // PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
 // // ---------------------------------------------------------
-
-// ============================================================================
-// PHASE 5: VEGETATION–WATER IMPACT + GHG ANALYSIS (CH4, CO) 
-// ============================================================================
 
 // ---------------------------
 // 0. AOI & Parameters
