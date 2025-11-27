@@ -991,187 +991,187 @@ Map.add(legend);
 // print(chart);
 
 
-// // ---------------------------------------------------------
-// // PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
-// // ---------------------------------------------------------
+// // // ---------------------------------------------------------
+// // // PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
+// // // ---------------------------------------------------------
 
-// ============================
-// PHASE 5: Vegetation & Gas Impact Analysis
-// ============================
-
-// ---------------------------
-// USER PARAMETERS
-// ---------------------------
-var folderName = 'Galamsey_Project_BDG';
-var startYear = 2010;
-var endYear = 2025;
-var aoi = AOI; // from Phase 4
-Map.centerObject(aoi, 10);
-Map.addLayer(aoi, {color: 'red'}, 'AOI', false);
-
-// ---------------------------
-// 1. Load CH₄ & CO datasets
-// ---------------------------
-var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
-    .filterDate(startYear + '-01-01', endYear + '-12-31')
-    .filterBounds(aoi)
-    .select('CH4_column_volume_mixing_ratio_dry_air');
-
-var co = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO')
-    .filterDate(startYear + '-01-01', endYear + '-12-31')
-    .filterBounds(aoi)
-    .select('CO_column_number_density');
-
-print('CH₄ count:', ch4.size());
-print('CO count:', co.size());
-
-// ---------------------------
-// 2. Use existing NDVI from Phase 4
-// ---------------------------
-var ndviCol = monthlyNDVIcol; // Precomputed
-print('NDVI available:', ndviCol.size());
-
-// ---------------------------
-// 3. Function to compute monthly mean
-// ---------------------------
-var months = ee.List.sequence(1,12);
-var years = ee.List.sequence(startYear, endYear);
-
-function makeMonthly(collection, year, month) {
-  var start = ee.Date.fromYMD(year, month, 1);
-  var end = start.advance(1, 'month');
-  var filtered = collection.filterDate(start, end);
-  return ee.Algorithms.If(
-    filtered.size().gt(0),
-    filtered.mean().set('year', year).set('month', month).set('system:time_start', start.millis()),
-    null
-  );
-}
-
-// Build monthly CH₄ collection
-var monthlyCH4 = ee.ImageCollection.fromImages(
-  years.map(function(y) {
-    return months.map(function(m) {
-      return makeMonthly(ch4, y, m);
-    });
-  }).flatten()
-).filter(ee.Filter.notNull(['system:time_start']));
-
-// Build monthly CO collection
-var monthlyCO = ee.ImageCollection.fromImages(
-  years.map(function(y) {
-    return months.map(function(m) {
-      return makeMonthly(co, y, m);
-    });
-  }).flatten()
-).filter(ee.Filter.notNull(['system:time_start']));
-
-print('Monthly CH₄ images:', monthlyCH4.size());
-print('Monthly CO images:', monthlyCO.size());
-
-// ---------------------------
-// 4. Compute anomalies
-// ---------------------------
-function computeAnomalies(monthlyCol) {
-  var climatology = ee.ImageCollection.fromImages(
-    months.map(function(m) {
-      var monthlyFilter = monthlyCol.filter(ee.Filter.eq('month', m));
-      return monthlyFilter.mean().set('month', m);
-    })
-  );
-
-  return monthlyCol.map(function(img) {
-    var m = img.get('month');
-    var clim = climatology.filter(ee.Filter.eq('month', m)).first();
-    return img.subtract(clim)
-              .rename(img.bandNames().get(0).cat('_anomaly'))
-              .copyProperties(img, ['system:time_start','year','month']);
-  });
-}
-
-var ch4Anom = computeAnomalies(monthlyCH4);
-var coAnom  = computeAnomalies(monthlyCO);
-
-// ---------------------------
-// 5. Correlations with NDVI
-// ---------------------------
-function computeCorrelation(ndvi, gasCol, gasBandName) {
-  // Join collections by month/year
-  var joined = ee.ImageCollection(ndvi.map(function(ndviImg) {
-    var y = ndviImg.get('year');
-    var m = ndviImg.get('month');
-    var gasImg = gasCol.filter(ee.Filter.eq('year', y))
-                       .filter(ee.Filter.eq('month', m))
-                       .first();
-    return ee.Algorithms.If(
-      gasImg,
-      ndviImg.addBands(gasImg),
-      null
-    );
-  })).filter(ee.Filter.notNull(['system:time_start']));
-
-  // Compute correlation
-  return joined.reduce(ee.Reducer.pearsonsCorrelation())
-               .rename(gasBandName + '_NDVI_corr')
-               .clip(aoi);
-}
-
-var ch4_ndvi_corr = computeCorrelation(ndviCol, monthlyCH4, 'CH4');
-var co_ndvi_corr  = computeCorrelation(ndviCol, monthlyCO, 'CO');
-
-Map.addLayer(ch4_ndvi_corr, {min:-1, max:1, palette:['red','white','green']}, 'CH₄-NDVI Correlation');
-Map.addLayer(co_ndvi_corr, {min:-1, max:1, palette:['red','white','green']}, 'CO-NDVI Correlation');
-
-// ---------------------------
-// 6. Time-series charts
-// ---------------------------
-var chartCH4 = ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'Monthly CH₄ (ppbv)', vAxis:{title:'CH₄ (ppbv)'}, lineWidth:2, pointSize:4});
-print(chartCH4);
-
-var chartCH4Anom = ui.Chart.image.series(ch4Anom, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'CH₄ Anomalies (ppbv)', lineWidth:2, pointSize:4, colors:['#d73027']});
-print(chartCH4Anom);
-
-var chartCO = ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'Monthly CO (mol/m²)', vAxis:{title:'CO (mol/m²)'}, lineWidth:2, pointSize:4});
-print(chartCO);
-
-var chartCOAnom = ui.Chart.image.series(coAnom, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'CO Anomalies (mol/m²)', lineWidth:2, pointSize:4, colors:['#1a9850']});
-print(chartCOAnom);
+// // ============================
+// // PHASE 5: Vegetation & Gas Impact Analysis
+// // ============================
 
 // // ---------------------------
-// // 7. Export results
+// // USER PARAMETERS
 // // ---------------------------
-// Export.image.toDrive({
-//   image: ch4_ndvi_corr.addBands(co_ndvi_corr).toFloat(),
-//   description: 'Gas_NDVI_Correlations',
-//   folder: folderName,
-//   fileNamePrefix: 'Gas_NDVI_corr',
-//   region: aoi.geometry(),
-//   scale: 7000,
-//   maxPixels: 1e10
-// });
+// var folderName = 'Galamsey_Project_BDG';
+// var startYear = 2010;
+// var endYear = 2025;
+// var aoi = AOI; // from Phase 4
+// Map.centerObject(aoi, 10);
+// Map.addLayer(aoi, {color: 'red'}, 'AOI', false);
 
-// Export.image.toDrive({
-//   image: monthlyCH4.toBands().clip(aoi).toFloat(),
-//   description: 'CH4_Monthly',
-//   folder: folderName,
-//   fileNamePrefix: 'CH4_monthly',
-//   region: aoi.geometry(),
-//   scale: 7000,
-//   maxPixels: 1e10
-// });
+// // ---------------------------
+// // 1. Load CH₄ & CO datasets
+// // ---------------------------
+// var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
+//     .filterDate(startYear + '-01-01', endYear + '-12-31')
+//     .filterBounds(aoi)
+//     .select('CH4_column_volume_mixing_ratio_dry_air');
 
-// Export.image.toDrive({
-//   image: monthlyCO.toBands().clip(aoi).toFloat(),
-//   description: 'CO_Monthly',
-//   folder: folderName,
-//   fileNamePrefix: 'CO_monthly',
-//   region: aoi.geometry(),
-//   scale: 7000,
-//   maxPixels: 1e10
-// });
+// var co = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO')
+//     .filterDate(startYear + '-01-01', endYear + '-12-31')
+//     .filterBounds(aoi)
+//     .select('CO_column_number_density');
 
-print('✅ Phase 5 completed. CH₄ & CO correlations, anomalies, and NDVI analysis ready.');
+// print('CH₄ count:', ch4.size());
+// print('CO count:', co.size());
+
+// // ---------------------------
+// // 2. Use existing NDVI from Phase 4
+// // ---------------------------
+// var ndviCol = monthlyNDVIcol; // Precomputed
+// print('NDVI available:', ndviCol.size());
+
+// // ---------------------------
+// // 3. Function to compute monthly mean
+// // ---------------------------
+// var months = ee.List.sequence(1,12);
+// var years = ee.List.sequence(startYear, endYear);
+
+// function makeMonthly(collection, year, month) {
+//   var start = ee.Date.fromYMD(year, month, 1);
+//   var end = start.advance(1, 'month');
+//   var filtered = collection.filterDate(start, end);
+//   return ee.Algorithms.If(
+//     filtered.size().gt(0),
+//     filtered.mean().set('year', year).set('month', month).set('system:time_start', start.millis()),
+//     null
+//   );
+// }
+
+// // Build monthly CH₄ collection
+// var monthlyCH4 = ee.ImageCollection.fromImages(
+//   years.map(function(y) {
+//     return months.map(function(m) {
+//       return makeMonthly(ch4, y, m);
+//     });
+//   }).flatten()
+// ).filter(ee.Filter.notNull(['system:time_start']));
+
+// // Build monthly CO collection
+// var monthlyCO = ee.ImageCollection.fromImages(
+//   years.map(function(y) {
+//     return months.map(function(m) {
+//       return makeMonthly(co, y, m);
+//     });
+//   }).flatten()
+// ).filter(ee.Filter.notNull(['system:time_start']));
+
+// print('Monthly CH₄ images:', monthlyCH4.size());
+// print('Monthly CO images:', monthlyCO.size());
+
+// // ---------------------------
+// // 4. Compute anomalies
+// // ---------------------------
+// function computeAnomalies(monthlyCol) {
+//   var climatology = ee.ImageCollection.fromImages(
+//     months.map(function(m) {
+//       var monthlyFilter = monthlyCol.filter(ee.Filter.eq('month', m));
+//       return monthlyFilter.mean().set('month', m);
+//     })
+//   );
+
+//   return monthlyCol.map(function(img) {
+//     var m = img.get('month');
+//     var clim = climatology.filter(ee.Filter.eq('month', m)).first();
+//     return img.subtract(clim)
+//               .rename(img.bandNames().get(0).cat('_anomaly'))
+//               .copyProperties(img, ['system:time_start','year','month']);
+//   });
+// }
+
+// var ch4Anom = computeAnomalies(monthlyCH4);
+// var coAnom  = computeAnomalies(monthlyCO);
+
+// // ---------------------------
+// // 5. Correlations with NDVI
+// // ---------------------------
+// function computeCorrelation(ndvi, gasCol, gasBandName) {
+//   // Join collections by month/year
+//   var joined = ee.ImageCollection(ndvi.map(function(ndviImg) {
+//     var y = ndviImg.get('year');
+//     var m = ndviImg.get('month');
+//     var gasImg = gasCol.filter(ee.Filter.eq('year', y))
+//                       .filter(ee.Filter.eq('month', m))
+//                       .first();
+//     return ee.Algorithms.If(
+//       gasImg,
+//       ndviImg.addBands(gasImg),
+//       null
+//     );
+//   })).filter(ee.Filter.notNull(['system:time_start']));
+
+//   // Compute correlation
+//   return joined.reduce(ee.Reducer.pearsonsCorrelation())
+//               .rename(gasBandName + '_NDVI_corr')
+//               .clip(aoi);
+// }
+
+// var ch4_ndvi_corr = computeCorrelation(ndviCol, monthlyCH4, 'CH4');
+// var co_ndvi_corr  = computeCorrelation(ndviCol, monthlyCO, 'CO');
+
+// Map.addLayer(ch4_ndvi_corr, {min:-1, max:1, palette:['red','white','green']}, 'CH₄-NDVI Correlation');
+// Map.addLayer(co_ndvi_corr, {min:-1, max:1, palette:['red','white','green']}, 'CO-NDVI Correlation');
+
+// // ---------------------------
+// // 6. Time-series charts
+// // ---------------------------
+// var chartCH4 = ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'Monthly CH₄ (ppbv)', vAxis:{title:'CH₄ (ppbv)'}, lineWidth:2, pointSize:4});
+// print(chartCH4);
+
+// var chartCH4Anom = ui.Chart.image.series(ch4Anom, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'CH₄ Anomalies (ppbv)', lineWidth:2, pointSize:4, colors:['#d73027']});
+// print(chartCH4Anom);
+
+// var chartCO = ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'Monthly CO (mol/m²)', vAxis:{title:'CO (mol/m²)'}, lineWidth:2, pointSize:4});
+// print(chartCO);
+
+// var chartCOAnom = ui.Chart.image.series(coAnom, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'CO Anomalies (mol/m²)', lineWidth:2, pointSize:4, colors:['#1a9850']});
+// print(chartCOAnom);
+
+// // // ---------------------------
+// // // 7. Export results
+// // // ---------------------------
+// // Export.image.toDrive({
+// //   image: ch4_ndvi_corr.addBands(co_ndvi_corr).toFloat(),
+// //   description: 'Gas_NDVI_Correlations',
+// //   folder: folderName,
+// //   fileNamePrefix: 'Gas_NDVI_corr',
+// //   region: aoi.geometry(),
+// //   scale: 7000,
+// //   maxPixels: 1e10
+// // });
+
+// // Export.image.toDrive({
+// //   image: monthlyCH4.toBands().clip(aoi).toFloat(),
+// //   description: 'CH4_Monthly',
+// //   folder: folderName,
+// //   fileNamePrefix: 'CH4_monthly',
+// //   region: aoi.geometry(),
+// //   scale: 7000,
+// //   maxPixels: 1e10
+// // });
+
+// // Export.image.toDrive({
+// //   image: monthlyCO.toBands().clip(aoi).toFloat(),
+// //   description: 'CO_Monthly',
+// //   folder: folderName,
+// //   fileNamePrefix: 'CO_monthly',
+// //   region: aoi.geometry(),
+// //   scale: 7000,
+// //   maxPixels: 1e10
+// // });
+
+// print('✅ Phase 5 completed. CH₄ & CO correlations, anomalies, and NDVI analysis ready.');
