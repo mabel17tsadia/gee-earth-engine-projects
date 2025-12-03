@@ -1375,92 +1375,76 @@ function getS2(year) {
   var start = ee.Date.fromYMD(year,1,1);
   var end   = ee.Date.fromYMD(year,12,31);
 
-  var s2 = ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
+  return ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
     .filterBounds(AOI)
     .filterDate(start, end)
     .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
     .map(function(img){
-      var cloudMask = img
-        .select("QA60")
+      var cloudMask = img.select("QA60")
         .bitwiseAnd(1<<10).eq(0)
         .and(img.select("QA60").bitwiseAnd(1<<11).eq(0));
       return img.updateMask(cloudMask);
     });
-
-  return s2;
 }
-
 
 // Compute NDVI & NDWI composites
 function getVegWaterComposite(year) {
   var s2 = getS2(year);
-
   var base = s2.median().clip(AOI);
-
-  var ndvi = base.normalizedDifference(["B8", "B4"]).rename("NDVI");
-  var ndwi = base.normalizedDifference(["B3", "B8"]).rename("NDWI");
-
-  var comp = base
-    .addBands(ndvi)
-    .addBands(ndwi);
-
-  return comp;
+  var ndvi = base.normalizedDifference(["B8","B4"]).rename("NDVI");
+  var ndwi = base.normalizedDifference(["B3","B8"]).rename("NDWI");
+  return base.addBands(ndvi).addBands(ndwi);
 }
-
 
 // ============================================================
 // 5.1 VEGETATION–WATER IMPACT INDICES
 // ============================================================
 
-// Use ee.Dictionary instead of JS object
-var NDVI_dict = ee.Dictionary({});
-var NDWI_dict = ee.Dictionary({});
+var years = ee.List.sequence(startYear, endYear);
 
-ee.List.sequence(startYear, endYear).forEach(function(yr){
-  var comp = getVegWaterComposite(yr);
-  NDVI_dict = NDVI_dict.set(yr, comp.select("NDVI"));
-  NDWI_dict = NDWI_dict.set(yr, comp.select("NDWI"));
+// NDVI & NDWI dictionaries
+var NDVI_dict = ee.Dictionary.fromLists([], []);
+var NDWI_dict = ee.Dictionary.fromLists([], []);
+
+years.map(function(y){
+  y = ee.Number(y);
+  var comp = getVegWaterComposite(y);
+  NDVI_dict = NDVI_dict.set(y, comp.select("NDVI"));
+  NDWI_dict = NDWI_dict.set(y, comp.select("NDWI"));
 });
 
-// ΔNDVI and ΔNDWI (inter-annual change)
-var dNDVI_dict = ee.Dictionary({});
-var dNDWI_dict = ee.Dictionary({});
+// ΔNDVI & ΔNDWI dictionaries
+var dNDVI_dict = ee.Dictionary.fromLists([], []);
+var dNDWI_dict = ee.Dictionary.fromLists([], []);
 
-ee.List.sequence(startYear+1, endYear).forEach(function(yr){
-  var prev = ee.Number(yr).subtract(1);
+ee.List.sequence(startYear+1, endYear).map(function(y){
+  y = ee.Number(y);
+  var prev = y.subtract(1);
 
-  var dNDVI = ee.Image(NDVI_dict.get(yr))
-                .subtract(ee.Image(NDVI_dict.get(prev)))
-                .rename("dNDVI_" + yr);
+  var dNDVI = ee.Image(NDVI_dict.get(y)).subtract(ee.Image(NDVI_dict.get(prev))).rename("dNDVI_" + y);
+  var dNDWI = ee.Image(NDWI_dict.get(y)).subtract(ee.Image(NDWI_dict.get(prev))).rename("dNDWI_" + y);
 
-  var dNDWI = ee.Image(NDWI_dict.get(yr))
-                .subtract(ee.Image(NDWI_dict.get(prev)))
-                .rename("dNDWI_" + yr);
-
-  dNDVI_dict = dNDVI_dict.set(yr, dNDVI);
-  dNDWI_dict = dNDWI_dict.set(yr, dNDWI);
+  dNDVI_dict = dNDVI_dict.set(y, dNDVI);
+  dNDWI_dict = dNDWI_dict.set(y, dNDWI);
 });
 
 // Vegetation Loss Index (VLI)
-var VLI_dict = ee.Dictionary({});
-
-dNDVI_dict.keys().forEach(function(yr){
-  var d = ee.Image(dNDVI_dict.get(yr));
-  var VLI = d.lt(0).multiply(d.abs()).rename("VLI_" + yr);
-  VLI_dict = VLI_dict.set(yr, VLI);
+var VLI_dict = ee.Dictionary.fromLists([], []);
+dNDVI_dict.keys().map(function(y){
+  y = ee.Number.parse(y);
+  var d = ee.Image(dNDVI_dict.get(y));
+  var VLI = d.lt(0).multiply(d.abs()).rename("VLI_" + y);
+  VLI_dict = VLI_dict.set(y, VLI);
 });
 
 // Water Expansion Index (WEI)
-var WEI_dict = ee.Dictionary({});
-
-dNDWI_dict.keys().forEach(function(yr){
-  var d = ee.Image(dNDWI_dict.get(yr));
-  var WEI = d.gt(0).multiply(d.abs()).rename("WEI_" + yr);
-  WEI_dict = WEI_dict.set(yr, WEI);
+var WEI_dict = ee.Dictionary.fromLists([], []);
+dNDWI_dict.keys().map(function(y){
+  y = ee.Number.parse(y);
+  var d = ee.Image(dNDWI_dict.get(y));
+  var WEI = d.gt(0).multiply(d.abs()).rename("WEI_" + y);
+  WEI_dict = WEI_dict.set(y, WEI);
 });
-
-
-
 
 // ============================================================
 // 5.2 CH4 & CO2 (Sentinel-5P + OCO-2)
@@ -1486,96 +1470,82 @@ function getCO2(year) {
     .rename("CO2_" + year);
 }
 
-var CH4_dict = ee.Dictionary({});
-var CO2_dict = ee.Dictionary({});
+// Dictionaries
+var CH4_dict = ee.Dictionary.fromLists([], []);
+var CO2_dict = ee.Dictionary.fromLists([], []);
 
-ee.List.sequence(startYear, endYear).forEach(function(yr){
-  CH4_dict = CH4_dict.set(yr, getCH4(yr));
-  CO2_dict = CO2_dict.set(yr, getCO2(yr));
+years.map(function(y){
+  y = ee.Number(y);
+  CH4_dict = CH4_dict.set(y, getCH4(y));
+  CO2_dict = CO2_dict.set(y, getCO2(y));
 });
-
 
 // ============================================================
 // 5.3 ANOMALIES (Z-Score)
 // ============================================================
 
-// Convert dictionary → ImageCollection
-var CH4_IC = ee.ImageCollection.fromImages(
-  CH4_dict.values()
-);
+// Convert dictionaries → ImageCollections
+var CH4_IC = ee.ImageCollection.fromImages(CH4_dict.values());
+var CO2_IC = ee.ImageCollection.fromImages(CO2_dict.values());
 
-var CO2_IC = ee.ImageCollection.fromImages(
-  CO2_dict.values()
-);
-
-// Z-score function
+// Z-score
 function zScore(ic) {
   var mean = ic.mean();
   var std  = ic.reduce(ee.Reducer.stdDev());
-  
-  return ic.map(function(img){
-    return img.subtract(mean).divide(std);
-  });
+  return ic.map(function(img){ return img.subtract(mean).divide(std); });
 }
 
 var CH4_anom = zScore(CH4_IC);
 var CO2_anom = zScore(CO2_IC);
 
-
 // ============================================================
-// 5.4 CORRELATION WITH MINED AREA (classifiedDict)
+// 5.4 CORRELATION WITH MINED AREA
 // ============================================================
 
-var minedAreaPerYear = {};
+// Compute mined area per year from classifiedDict
+var minedAreaPerYear = ee.Dictionary.fromLists([], []);
 
-ee.List.sequence(startYear, endYear).getInfo().forEach(function(yr){
+years.map(function(y){
+  y = ee.Number(y);
+  var cls = ee.Image(classifiedDict[y]);
+  var area = cls.eq(1).multiply(ee.Image.pixelArea()).reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: AOI,
+    scale: 30,
+    maxPixels: 1e13
+  }).get("classification");
 
-  var cls = classifiedDict[yr];
+  minedAreaPerYear = minedAreaPerYear.set(y, ee.Number(area).divide(10000));
+});
 
-  var area = cls.eq(1)
-    .multiply(ee.Image.pixelArea())
-    .reduceRegion({
-      reducer: ee.Reducer.sum(),
+// Build correlation FeatureCollection
+var correlationFC = ee.FeatureCollection(
+  years.map(function(y){
+    y = ee.Number(y);
+    var minedHa = ee.Number(minedAreaPerYear.get(y));
+
+    var ch4 = ee.Image(CH4_dict.get(y)).reduceRegion({
+      reducer: ee.Reducer.mean(),
       geometry: AOI,
-      scale: 30,
+      scale: 11130,
       maxPixels: 1e13
-    }).get("classification");
+    }).get("CH4_" + y);
 
-  area = ee.Number(area).divide(10000);   // ha
-  minedAreaPerYear[yr] = area;
-});
+    var co2 = ee.Image(CO2_dict.get(y)).reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: AOI,
+      scale: 11130,
+      maxPixels: 1e13
+    }).get("CO2_" + y);
 
-
-// Build mining + GHG correlation table
-var correlationList = [];
-
-ee.List.sequence(startYear, endYear).getInfo().forEach(function(yr){
-
-  var minedHa = minedAreaPerYear[yr];
-  var ch4 = CH4_dict[yr].reduceRegion({
-    reducer: ee.Reducer.mean(),
-    geometry: AOI,
-    scale: 11130,
-    maxPixels: 1e13
-  }).get("CH4_"+yr);
-
-  var co2 = CO2_dict[yr].reduceRegion({
-    reducer: ee.Reducer.mean(),
-    geometry: AOI,
-    scale: 11130,
-    maxPixels: 1e13
-  }).get("CO2_"+yr);
-
-  correlationList.push(ee.Feature(null, {
-    year: yr,
-    mined_area_ha: minedHa,
-    ch4_mean: ch4,
-    co2_mean: co2
-  }));
-});
-
-var correlationFC = ee.FeatureCollection(correlationList);
-
+    return ee.Feature(null, {
+      year: y,
+      mined_area_ha: minedHa,
+      ch4_mean: ch4,
+      co2_mean: co2
+    });
+  })
+);
 
 // ============================================================
 // 5.5 EXPORTS
@@ -1583,12 +1553,11 @@ var correlationFC = ee.FeatureCollection(correlationList);
 
 var exportFolder = folderName + "/phase5/";
 
-
-// Export VLI, WEI, ΔNDVI, ΔNDWI
-Object.keys(VLI_dict).forEach(function(yr){
+// Export VLI & WEI
+VLI_dict.values().getInfo().forEach(function(img, i){
   Export.image.toDrive({
-    image: VLI_dict[yr],
-    description: "VLI_"+yr,
+    image: img,
+    description: "VLI_" + (startYear+i+1),
     folder: exportFolder + "vegetation",
     region: AOI,
     scale: 10,
@@ -1596,10 +1565,10 @@ Object.keys(VLI_dict).forEach(function(yr){
   });
 });
 
-Object.keys(WEI_dict).forEach(function(yr){
+WEI_dict.values().getInfo().forEach(function(img, i){
   Export.image.toDrive({
-    image: WEI_dict[yr],
-    description: "WEI_"+yr,
+    image: img,
+    description: "WEI_" + (startYear+i+1),
     folder: exportFolder + "water",
     region: AOI,
     scale: 10,
@@ -1607,12 +1576,11 @@ Object.keys(WEI_dict).forEach(function(yr){
   });
 });
 
-
-// Export CH4, CO2, anomalies
-Object.keys(CH4_dict).forEach(function(yr){
+// Export CH4 & CO2
+CH4_dict.values().getInfo().forEach(function(img, i){
   Export.image.toDrive({
-    image: CH4_dict[yr],
-    description: "CH4_"+yr,
+    image: img,
+    description: "CH4_" + (startYear+i),
     folder: exportFolder + "ghg",
     region: AOI,
     scale: 10000,
@@ -1620,10 +1588,10 @@ Object.keys(CH4_dict).forEach(function(yr){
   });
 });
 
-Object.keys(CO2_dict).forEach(function(yr){
+CO2_dict.values().getInfo().forEach(function(img, i){
   Export.image.toDrive({
-    image: CO2_dict[yr],
-    description: "CO2_"+yr,
+    image: img,
+    description: "CO2_" + (startYear+i),
     folder: exportFolder + "ghg",
     region: AOI,
     scale: 10000,
@@ -1631,12 +1599,10 @@ Object.keys(CO2_dict).forEach(function(yr){
   });
 });
 
-
-// Export correlation CSV
+// Export correlation table
 Export.table.toDrive({
   collection: correlationFC,
   description: "Mining_GHG_Correlation",
   folder: exportFolder + "statistics",
   fileFormat: "CSV"
 });
-
