@@ -1412,53 +1412,53 @@ function getVegWaterComposite(year) {
 // 5.1 VEGETATION–WATER IMPACT INDICES
 // ============================================================
 
-// Store NDVI and NDWI per year
-var NDVI_dict = {};
-var NDWI_dict = {};
+// Use ee.Dictionary instead of JS object
+var NDVI_dict = ee.Dictionary({});
+var NDWI_dict = ee.Dictionary({});
 
-ee.List.sequence(startYear, endYear).getInfo().forEach(function(yr){
+ee.List.sequence(startYear, endYear).forEach(function(yr){
   var comp = getVegWaterComposite(yr);
-  NDVI_dict[yr] = comp.select("NDVI");
-  NDWI_dict[yr] = comp.select("NDWI");
+  NDVI_dict = NDVI_dict.set(yr, comp.select("NDVI"));
+  NDWI_dict = NDWI_dict.set(yr, comp.select("NDWI"));
 });
-
 
 // ΔNDVI and ΔNDWI (inter-annual change)
-var dNDVI_dict = {};
-var dNDWI_dict = {};
+var dNDVI_dict = ee.Dictionary({});
+var dNDWI_dict = ee.Dictionary({});
 
-ee.List.sequence(startYear+1, endYear).getInfo().forEach(function(yr){
-  var prev = yr - 1;
-  
-  var dNDVI = NDVI_dict[yr].subtract(NDVI_dict[prev]).rename("dNDVI_"+yr);
-  var dNDWI = NDWI_dict[yr].subtract(NDWI_dict[prev]).rename("dNDWI_"+yr);
+ee.List.sequence(startYear+1, endYear).forEach(function(yr){
+  var prev = ee.Number(yr).subtract(1);
 
-  dNDVI_dict[yr] = dNDVI;
-  dNDWI_dict[yr] = dNDWI;
+  var dNDVI = ee.Image(NDVI_dict.get(yr))
+                .subtract(ee.Image(NDVI_dict.get(prev)))
+                .rename("dNDVI_" + yr);
+
+  var dNDWI = ee.Image(NDWI_dict.get(yr))
+                .subtract(ee.Image(NDWI_dict.get(prev)))
+                .rename("dNDWI_" + yr);
+
+  dNDVI_dict = dNDVI_dict.set(yr, dNDVI);
+  dNDWI_dict = dNDWI_dict.set(yr, dNDWI);
 });
 
-
-// ------------------------------------------------------------
 // Vegetation Loss Index (VLI)
-// ------------------------------------------------------------
-var VLI_dict = {};
+var VLI_dict = ee.Dictionary({});
 
-Object.keys(dNDVI_dict).forEach(function(yr){
-  var d = dNDVI_dict[yr];
-  var VLI = d.lt(0).multiply(d.abs()).rename("VLI_"+yr);
-  VLI_dict[yr] = VLI;
+dNDVI_dict.keys().forEach(function(yr){
+  var d = ee.Image(dNDVI_dict.get(yr));
+  var VLI = d.lt(0).multiply(d.abs()).rename("VLI_" + yr);
+  VLI_dict = VLI_dict.set(yr, VLI);
 });
 
-// ------------------------------------------------------------
 // Water Expansion Index (WEI)
-// ------------------------------------------------------------
-var WEI_dict = {};
+var WEI_dict = ee.Dictionary({});
 
-Object.keys(dNDWI_dict).forEach(function(yr){
-  var d = dNDWI_dict[yr];
-  var WEI = d.gt(0).multiply(d.abs()).rename("WEI_"+yr);
-  WEI_dict[yr] = WEI;
+dNDWI_dict.keys().forEach(function(yr){
+  var d = ee.Image(dNDWI_dict.get(yr));
+  var WEI = d.gt(0).multiply(d.abs()).rename("WEI_" + yr);
+  WEI_dict = WEI_dict.set(yr, WEI);
 });
+
 
 
 
@@ -1466,7 +1466,6 @@ Object.keys(dNDWI_dict).forEach(function(yr){
 // 5.2 CH4 & CO2 (Sentinel-5P + OCO-2)
 // ============================================================
 
-// Sentinel-5P Methane (CH4)
 function getCH4(year) {
   return ee.ImageCollection("COPERNICUS/S5P/OFFL/L3_CH4")
     .filterBounds(AOI)
@@ -1474,10 +1473,9 @@ function getCH4(year) {
     .select("CH4_column_volume_mixing_ratio_dry_air")
     .mean()
     .clip(AOI)
-    .rename("CH4_"+year);
+    .rename("CH4_" + year);
 }
 
-// OCO-2 CO2
 function getCO2(year) {
   return ee.ImageCollection("NASA/OCO-2/XCO2")
     .filterBounds(AOI)
@@ -1485,15 +1483,15 @@ function getCO2(year) {
     .select("XCO2")
     .mean()
     .clip(AOI)
-    .rename("CO2_"+year);
+    .rename("CO2_" + year);
 }
 
-var CH4_dict = {};
-var CO2_dict = {};
+var CH4_dict = ee.Dictionary({});
+var CO2_dict = ee.Dictionary({});
 
-ee.List.sequence(startYear, endYear).getInfo().forEach(function(yr){
-  CH4_dict[yr] = getCH4(yr);
-  CO2_dict[yr] = getCO2(yr);
+ee.List.sequence(startYear, endYear).forEach(function(yr){
+  CH4_dict = CH4_dict.set(yr, getCH4(yr));
+  CO2_dict = CO2_dict.set(yr, getCO2(yr));
 });
 
 
@@ -1501,16 +1499,24 @@ ee.List.sequence(startYear, endYear).getInfo().forEach(function(yr){
 // 5.3 ANOMALIES (Z-Score)
 // ============================================================
 
-function zScore(imgCollection) {
-  var mean = imgCollection.mean();
-  var std  = imgCollection.reduce(ee.Reducer.stdDev());
-  return imgCollection.map(function(img){
+// Convert dictionary → ImageCollection
+var CH4_IC = ee.ImageCollection.fromImages(
+  CH4_dict.values()
+);
+
+var CO2_IC = ee.ImageCollection.fromImages(
+  CO2_dict.values()
+);
+
+// Z-score function
+function zScore(ic) {
+  var mean = ic.mean();
+  var std  = ic.reduce(ee.Reducer.stdDev());
+  
+  return ic.map(function(img){
     return img.subtract(mean).divide(std);
   });
 }
-
-var CH4_IC = ee.ImageCollection.fromImages(Object.values(CH4_dict));
-var CO2_IC = ee.ImageCollection.fromImages(Object.values(CO2_dict));
 
 var CH4_anom = zScore(CH4_IC);
 var CO2_anom = zScore(CO2_IC);
