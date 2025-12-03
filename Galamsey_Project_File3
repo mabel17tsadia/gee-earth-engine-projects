@@ -732,25 +732,27 @@ legendPanel.add(ui.Label(yr + ': ' + areaHa.format('%.2f').getInfo() + ' ha',
 }
 
 
-//TIME-SERIES CHART///
-// Convert yearList to strings for chart labels
-var yearLabels = yearList.map(function(y){
-  return ee.Number(y).format('%d'); // formats as '2020', '2021', etc.
-});
+// //TIME-SERIES CHART///
+// // Convert yearList to strings for chart labels
+// var yearLabels = yearList.map(function(y){
+//   return ee.Number(y).format('%d'); // formats as '2020', '2021', etc.
+// });
 
-// Create chart
-var chart = ui.Chart.array.values(areaList, 0, yearLabels)
-  .setChartType('LineChart')
-  .setOptions({
-    title: 'Degraded / Active Mining Area Over Time',
-    hAxis: {title: 'Year'},
-    vAxis: {title: 'Area (ha)'},
-    pointSize: 5,
-    lineWidth: 2,
-    colors: ['red'] 
-  });
+// // Create chart
+// var chart = ui.Chart.array.values(areaList, 0, yearLabels)
+//   .setChartType('LineChart')
+//   .setOptions({
+//     title: 'Degraded / Active Mining Area Over Time',
+//     hAxis: {title: 'Year'},
+//     vAxis: {title: 'Area (ha)'},
+//     pointSize: 5,
+//     lineWidth: 2,
+//     colors: ['red'] 
+//   });
 
-print(chart);
+// print(chart);
+
+////////////\\\\\\\\\\\\\\\\\
 
 // ---------------------------------------------
 // EXPORT DEGRADED / ACTIVE MINING AREA DATA
@@ -766,14 +768,14 @@ var degradedAreaTable = ee.FeatureCollection(
   })
 );
 
-// Export the table as CSV
-Export.table.toDrive({
-  collection: degradedAreaTable,
-  description: 'Degraded_Area_Timeseries',
-  folder: 'Galamsey_Project_BDG',
-  fileNamePrefix: 'Degraded_Area_Trend',
-  fileFormat: 'CSV'
-});
+// // Export the table as CSV
+// Export.table.toDrive({
+//   collection: degradedAreaTable,
+//   description: 'Degraded_Area_Timeseries',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'Degraded_Area_Trend',
+//   fileFormat: 'CSV'
+// });
 
 //................
 ////Build NDVI time series (monthly) per pixel
@@ -840,35 +842,38 @@ print('Monthly NDVI ImageCollection', monthlyNDVIcol);
 
 
 
-//////////MONTHLY NDVICHART////////////////////
-// ---------------------------
-// COLORS (distinct for each year)
-// ---------------------------
-var colors = [
-  'red','blue','green','orange','purple','brown','pink','cyan','magenta',
-  'olive','navy','gold','teal','maroon','grey','darkgreen','darkred'
-];
+// //////////MONTHLY NDVICHART////////////////////
+// // ---------------------------
+// // COLORS (distinct for each year)
+// // ---------------------------
+// var colors = [
+//   'red','blue','green','orange','purple','brown','pink','cyan','magenta',
+//   'olive','navy','gold','teal','maroon','grey','darkgreen','darkred'
+// ];
 
-// ---------------------------
-// REDUCE TO MEAN NDVI PER MONTH PER YEAR
-// ---------------------------
-var monthlyStats = monthlyNDVIcol.map(function(img){
-  var mean = img.reduceRegion({
-    reducer: ee.Reducer.mean(),
-    geometry: aoi,
-    scale: 30,
-    maxPixels: 1e13
-  }).get('NDVI');
-  return ee.Feature(null, {
-    year: img.get('year'),
-    month: img.get('month'),
-    NDVI: mean
-  });
-});
+// // ---------------------------
+// // REDUCE TO MEAN NDVI PER MONTH PER YEAR
+// // ---------------------------
+// var monthlyStats = monthlyNDVIcol.map(function(img){
+//   var mean = img.reduceRegion({
+//     reducer: ee.Reducer.mean(),
+//     geometry: aoi,
+//     scale: 30,
+//     maxPixels: 1e13
+//   }).get('NDVI');
+//   return ee.Feature(null, {
+//     year: img.get('year'),
+//     month: img.get('month'),
+//     NDVI: mean
+//   });
+// });
 
-// Convert to list
-monthlyStats = monthlyStats.aggregate_array('NDVI');
-print('Monthly NDVI stats', monthlyStats);
+// // Convert to list
+// monthlyStats = monthlyStats.aggregate_array('NDVI');
+// print('Monthly NDVI stats', monthlyStats);
+
+
+//////////////
 
 // // ---------------------------
 // // CHART: mean NDVI per month for each year
@@ -905,122 +910,124 @@ print('Monthly NDVI stats', monthlyStats);
 // print(chart);
 
 
+///////
+
+// // ========================================================
+// // NDVI Trend Analysis (Monthly NDVI → Trend Map)
+// // ========================================================
+
+// // ---------------------------
+// // 1. Add Time Band (Fractional Year)
+// // ---------------------------
+// var monthlyWithTime = monthlyNDVIcol.map(function(img){
+//   var year = ee.Number(img.get('year'));
+//   var month = ee.Number(img.get('month'));
+//   var time = year.add(month.divide(12)).toFloat();  // fractional year, float
+//   return img.addBands(ee.Image.constant(time).rename('time').toFloat());
+// });
+
+// // Inspect first image
+// print('Monthly NDVI with time', monthlyWithTime.first());
+
+// // ---------------------------
+// // 2. Compute Linear Fit per Pixel
+// // ---------------------------
+// var trend = monthlyWithTime.select(['time','NDVI'])
+//   .reduce(ee.Reducer.linearFit());
+
+// // slope = 'scale', intercept = 'offset'
+// var slope = trend.select('scale');      // NDVI change per year
+// var intercept = trend.select('offset'); // starting NDVI
+
+// // ---------------------------
+// // 3. Classify Trend
+// // ---------------------------
+// // Thresholds for NDVI change (adjust as needed)
+// var degrading = slope.lt(-0.005);   // NDVI decreasing
+// var stable    = slope.abs().lte(0.005); // NDVI stable
+// var recovering= slope.gt(0.005);    // NDVI increasing
+
+// var trendClass = degrading.multiply(1)
+//   .add(stable.multiply(2))
+//   .add(recovering.multiply(3));
+
+// // ---------------------------
+// // 4. Visualization Parameters
+// // ---------------------------
+// var slopeVis = {min:-0.02, max:0.02, palette:['red','yellow','green']};
+// var classVis = {min:1, max:3, palette:['red','yellow','green']};
+
+// // Add slope map
+// Map.addLayer(slope, slopeVis, 'NDVI Trend (Slope)');
+
+// // Add classified trend map
+// Map.addLayer(trendClass, classVis, 'NDVI Trend Class');
+
+// // ---------------------------
+// // 5. Legend for Classification
+// // ---------------------------
+// var legend = ui.Panel({style:{position:'bottom-left', padding:'8px', backgroundColor:'white'}});
+// legend.add(ui.Label('NDVI Trend Classes', {fontWeight:'bold', fontSize:'14px'}));
+
+// function makeLegendRow(color, name){
+//   var colorBox = ui.Label({style:{backgroundColor: color, padding:'8px', margin:'0 0 4px 0'}});
+//   var description = ui.Label({value:name, style:{margin:'0 0 4px 6px'}});
+//   return ui.Panel([colorBox, description], ui.Panel.Layout.Flow('horizontal'));
+// }
+
+// legend.add(makeLegendRow('red', 'Degrading'));
+// legend.add(makeLegendRow('yellow', 'Stable'));
+// legend.add(makeLegendRow('green', 'Recovering'));
+// Map.add(legend);
+
+// // ---------------------------
+// // 6. NDVI Trend Chart (Optional)
+// // ---------------------------
+// // Compute mean NDVI per month per year
+// var monthlyStats = monthlyNDVIcol.map(function(img){
+//   var mean = img.reduceRegion({
+//     reducer: ee.Reducer.mean(),
+//     geometry: aoi,
+//     scale: 30,
+//     maxPixels: 1e13
+//   }).get('NDVI');
+//   return ee.Feature(null, {
+//     'year': img.get('year'),
+//     'month': img.get('month'),
+//     'NDVI': mean
+//   });
+// });
+
+// var chart = ui.Chart.feature.groups({
+//   features: monthlyStats,
+//   xProperty: 'month',
+//   yProperty: 'NDVI',
+//   seriesProperty: 'year'
+// })
+// .setChartType('LineChart')
+// .setOptions({
+//   title: 'Monthly NDVI Trend (2010–2025)',
+//   hAxis:{title:'Month'},
+//   vAxis:{title:'Mean NDVI'},
+//   lineWidth: 2,
+//   pointSize: 4,
+//   colors: ['red','blue','green','orange','purple','brown','pink','cyan','magenta',
+//           'olive','navy','gold','teal','maroon','grey','darkgreen','darkred']
+// });
+
+// print(chart);
+
+// // Export NDVI chart data as CSV
+// Export.table.toDrive({
+//   collection: monthlyStats,
+//   description: 'NDVI_Monthly_Trend_Data',
+//   folder: 'Galamsey_Project_BDG',
+//   fileNamePrefix: 'NDVI_Monthly_Trend',
+//   fileFormat: 'CSV'
+// });
 
 
-// ========================================================
-// NDVI Trend Analysis (Monthly NDVI → Trend Map)
-// ========================================================
-
-// ---------------------------
-// 1. Add Time Band (Fractional Year)
-// ---------------------------
-var monthlyWithTime = monthlyNDVIcol.map(function(img){
-  var year = ee.Number(img.get('year'));
-  var month = ee.Number(img.get('month'));
-  var time = year.add(month.divide(12)).toFloat();  // fractional year, float
-  return img.addBands(ee.Image.constant(time).rename('time').toFloat());
-});
-
-// Inspect first image
-print('Monthly NDVI with time', monthlyWithTime.first());
-
-// ---------------------------
-// 2. Compute Linear Fit per Pixel
-// ---------------------------
-var trend = monthlyWithTime.select(['time','NDVI'])
-  .reduce(ee.Reducer.linearFit());
-
-// slope = 'scale', intercept = 'offset'
-var slope = trend.select('scale');      // NDVI change per year
-var intercept = trend.select('offset'); // starting NDVI
-
-// ---------------------------
-// 3. Classify Trend
-// ---------------------------
-// Thresholds for NDVI change (adjust as needed)
-var degrading = slope.lt(-0.005);   // NDVI decreasing
-var stable    = slope.abs().lte(0.005); // NDVI stable
-var recovering= slope.gt(0.005);    // NDVI increasing
-
-var trendClass = degrading.multiply(1)
-  .add(stable.multiply(2))
-  .add(recovering.multiply(3));
-
-// ---------------------------
-// 4. Visualization Parameters
-// ---------------------------
-var slopeVis = {min:-0.02, max:0.02, palette:['red','yellow','green']};
-var classVis = {min:1, max:3, palette:['red','yellow','green']};
-
-// Add slope map
-Map.addLayer(slope, slopeVis, 'NDVI Trend (Slope)');
-
-// Add classified trend map
-Map.addLayer(trendClass, classVis, 'NDVI Trend Class');
-
-// ---------------------------
-// 5. Legend for Classification
-// ---------------------------
-var legend = ui.Panel({style:{position:'bottom-left', padding:'8px', backgroundColor:'white'}});
-legend.add(ui.Label('NDVI Trend Classes', {fontWeight:'bold', fontSize:'14px'}));
-
-function makeLegendRow(color, name){
-  var colorBox = ui.Label({style:{backgroundColor: color, padding:'8px', margin:'0 0 4px 0'}});
-  var description = ui.Label({value:name, style:{margin:'0 0 4px 6px'}});
-  return ui.Panel([colorBox, description], ui.Panel.Layout.Flow('horizontal'));
-}
-
-legend.add(makeLegendRow('red', 'Degrading'));
-legend.add(makeLegendRow('yellow', 'Stable'));
-legend.add(makeLegendRow('green', 'Recovering'));
-Map.add(legend);
-
-// ---------------------------
-// 6. NDVI Trend Chart (Optional)
-// ---------------------------
-// Compute mean NDVI per month per year
-var monthlyStats = monthlyNDVIcol.map(function(img){
-  var mean = img.reduceRegion({
-    reducer: ee.Reducer.mean(),
-    geometry: aoi,
-    scale: 30,
-    maxPixels: 1e13
-  }).get('NDVI');
-  return ee.Feature(null, {
-    'year': img.get('year'),
-    'month': img.get('month'),
-    'NDVI': mean
-  });
-});
-
-var chart = ui.Chart.feature.groups({
-  features: monthlyStats,
-  xProperty: 'month',
-  yProperty: 'NDVI',
-  seriesProperty: 'year'
-})
-.setChartType('LineChart')
-.setOptions({
-  title: 'Monthly NDVI Trend (2010–2025)',
-  hAxis:{title:'Month'},
-  vAxis:{title:'Mean NDVI'},
-  lineWidth: 2,
-  pointSize: 4,
-  colors: ['red','blue','green','orange','purple','brown','pink','cyan','magenta',
-          'olive','navy','gold','teal','maroon','grey','darkgreen','darkred']
-});
-
-print(chart);
-
-// Export NDVI chart data as CSV
-Export.table.toDrive({
-  collection: monthlyStats,
-  description: 'NDVI_Monthly_Trend_Data',
-  folder: 'Galamsey_Project_BDG',
-  fileNamePrefix: 'NDVI_Monthly_Trend',
-  fileFormat: 'CSV'
-});
-
+/////////////
 
 // // // ---------------------------------------------------------
 // // // PHASE 5: CH4/CO ANALYSIS, ANOMALIES, CORRELATIONS, EXPORT
@@ -1388,17 +1395,14 @@ function getS2(year) {
 function getVegWaterComposite(year) {
   var s2 = getS2(year);
 
-  var comp = s2.median()
-    .clip(AOI)
-    .rename(s2.first().bandNames())
-    .addBands({
-      srcImg: s2.median().normalizedDifference(["B8", "B4"]),
-      name: "NDVI"
-    })
-    .addBands({
-      srcImg: s2.median().normalizedDifference(["B3", "B8"]),
-      name: "NDWI"
-    });
+  var base = s2.median().clip(AOI);
+
+  var ndvi = base.normalizedDifference(["B8", "B4"]).rename("NDVI");
+  var ndwi = base.normalizedDifference(["B3", "B8"]).rename("NDWI");
+
+  var comp = base
+    .addBands(ndvi)
+    .addBands(ndwi);
 
   return comp;
 }
