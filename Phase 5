@@ -11,132 +11,407 @@ Map.centerObject(aoi, 10);
 Map.setOptions('SATELLITE');
 Map.addLayer(aoi, {color: 'red'}, 'Prestea Huni Valley AOI', false);
 
-// ==================== 1. Sentinel-5P CH₄ & CO ====================
-var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
-  .filterDate('2018-07-01', '2025-12-31')
-  .filterBounds(aoi.geometry())
-  .select('CH4_column_volume_mixing_ratio_dry_air');
 
-var co = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO')
-  .filterDate('2018-07-01', '2025-12-31')
-  .filterBounds(aoi.geometry())
-  .select('CO_column_number_density');
+///////////////////////////////
+// PHASE 4: PRESTEA HUNI VALLEY – VEGETATION, WATER, AND GHG INDICES
+///////////////////////////////
 
-print('S5P CH₄ images (2018–2025):', ch4.size());
-print('S5P CO images (2018–2025):', co.size());
+///////////////////////////////
+// 0. SETUP AOI AND SITES
+///////////////////////////////
 
-// ==================== 2. Overall Means ====================
-var ch4Mean = ch4.mean().clip(aoi);
-var coMean  = co.mean().clip(aoi);
+// var aoi = ee.FeatureCollection('projects/mabeltsadia/assets/Prestea_Huni_Valley_WR');
+var minedSites = ee.FeatureCollection('projects/mabeltsadia/assets/mined_polygons_export');
 
-Map.addLayer(ch4Mean, {min:1800, max:1950, palette:['black','blue','cyan','green','yellow','red']}, 
-             'CH₄ Mean 2018–2025 (ppbv)', false);
-Map.addLayer(coMean,  {min:0.02, max:0.08, palette:['#000004','#3B1F6E','#8C50A4','#C4A3D3','#FFFFD4']}, 
-             'CO Mean 2018–2025 (mol/m²)', true);
+// Optional: visualize on the map
+Map.addLayer(minedSites, {color: 'red'}, 'Mined Polygons');
+Map.centerObject(minedSites, 10);
 
-// Legends (same as before — omitted here for brevity, copy from previous script if you want them)
 
-// Stats
-var meanCH4 = ch4Mean.reduceRegion(ee.Reducer.mean(), aoi.geometry(), 7000).get('CH4_column_volume_mixing_ratio_dry_air');
-var meanCO  = coMean.reduceRegion(ee.Reducer.mean(), aoi.geometry(), 7000).get('CO_column_number_density');
-print('Mean CH₄ (ppbv):', ee.Number(meanCH4).format('%.1f'));
-print('Mean CO (mol/m²):', ee.Number(meanCO).format('%.4f'));
+// Generate non-mined/control sites dynamically
+// Create a 2.5 km buffer around mined sites to avoid overlap
+var minedBuffer = minedSites.map(function(f){ return f.buffer(2500); });
+var nonMinedCandidates = aoi.filterBounds(aoi.geometry())
+  .difference(minedBuffer.union(1));
+var nonMinedSites = ee.FeatureCollection.randomPoints({
+  region: nonMinedCandidates.geometry(),
+  points: minedSites.size(),
+  seed: 42
+}).map(function(f){ return ee.Feature(f).set('class',0); });
 
-// ==================== 3. MONTHLY MEANS – ROBUST VERSION ====================
-var startYear = 2018;
-var endYear   = 2025;
-var years = ee.List.sequence(startYear, endYear);
-var months = ee.List.sequence(1,12);
+// Map.centerObject(aoi, 10);
+// Map.setOptions('SATELLITE');
+// Map.addLayer(aoi, {color:'white', fillColor:'00000000'}, 'Prestea-Huni Valley AOI');
 
-// Function to create monthly mean (returns null if no data)
-function makeMonthly(collection, bandName, year, month) {
-  var start = ee.Date.fromYMD(year, month, 1);
-  var end   = start.advance(1, 'month');
-  var img = collection.filterDate(start, end).mean();
-  var count = collection.filterDate(start, end).size();
-  return ee.Algorithms.If(
-    count.gt(0),
-    img.set('year', year).set('month', month).set('system:time_start', start.millis()),
-    null
-  );
+///////////////////////////////
+// 1. VEGETATION LOSS & WATER EXPANSION (2010–2025)
+///////////////////////////////
+
+function harmonize(img, redBand, nirBand){
+  return img.select([redBand, nirBand])
+            .multiply(0.0000275).add(-0.2)
+            .rename(['Red','NIR'])
+            .copyProperties(img, ['system:time_start']);
 }
 
-// Build monthly CH₄
+function maskClouds(img){
+  var qa = img.select('QA_PIXEL');
+  var clear = qa.bitwiseAnd(8).eq(0)
+               .and(qa.bitwiseAnd(16).eq(0))
+               .and(qa.bitwiseAnd(4).eq(0));
+  return img.updateMask(clear);
+}
+
+var years = ee.List.sequence(2010, 2025);
+
+var annual = ee.ImageCollection.fromImages(
+  years.map(function(y){
+    var start = ee.Date.fromYMD(y,1,1);
+    var end = start.advance(1,'year');
+    var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+               .filterDate(start,end).filterBounds(aoi)
+               .map(function(i){return harmonize(i,'SR_B3','SR_B4');});
+    var l7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+               .filterDate(start,end).filterBounds(aoi)
+               .map(function(i){return harmonize(i,'SR_B3','SR_B4');});
+    var l8l9 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+                  .merge(ee.ImageCollection('LANDSAT/LC09/C02/T1_L2'))
+                  .filterDate(start,end).filterBounds(aoi)
+                  .map(maskClouds)
+                  .map(function(i){return harmonize(i,'SR_B4','SR_B5');});
+    var coll = l5.merge(l7).merge(l8l9).median().clip(aoi);
+    return coll
+      .addBands(coll.normalizedDifference(['NIR','Red']).rename('NDVI'))
+      .addBands(coll.expression('NIR - Red', {NIR: coll.select('NIR'), Red: coll.select('Red')}).rename('NDWI_Gao'))
+      .set('year',y);
+  })
+);
+
+var img2010 = annual.filter(ee.Filter.eq('year',2010)).first();
+var img2025 = annual.filter(ee.Filter.eq('year',2025)).first();
+
+// Delta Images
+var deltaNDVI = img2010.select('NDVI').subtract(img2025.select('NDVI')).rename('dNDVI');
+var deltaNDWI = img2025.select('NDWI_Gao').subtract(img2010.select('NDWI_Gao')).rename('dNDWI');
+
+// Training points
+var points = minedSites.map(function(f){return f.set('class',1);})
+                       .merge(nonMinedSites);
+
+var training = deltaNDVI.addBands(deltaNDWI)
+              .sampleRegions({collection: points, properties:['class'], scale:30});
+
+// Extract thresholds
+function getThreshold(classifier){
+  var treeString = ee.String(classifier.explain().get('tree'));
+  var match = treeString.match('[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?');
+  return ee.Number.parse(ee.List(match).get(0));
+}
+
+var cartNDVI = ee.Classifier.smileCart().train({features: training, classProperty:'class', inputProperties:['dNDVI']});
+var cartNDWI = ee.Classifier.smileCart().train({features: training, classProperty:'class', inputProperties:['dNDWI']});
+
+var threshNDVI = getThreshold(cartNDVI);
+var threshNDWI = getThreshold(cartNDWI);
+
+// Final Indices
+var VLI = deltaNDVI.clip(aoi).rename('Vegetation_Loss_Index');
+var WEI = deltaNDWI.clip(aoi).rename('Water_Expansion_Index');
+
+var severeLoss = VLI.gte(threshNDVI);
+var newWater = WEI.gte(threshNDWI).and(img2025.select('NDWI_Gao').gt(0.05));
+
+// Map Layers – ONLY 1 layer each
+Map.addLayer(VLI.selfMask(), {min:0, max:0.7, palette:['white','#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026']}, 'Vegetation Loss Index 2025');
+Map.addLayer(WEI.selfMask(), {min:0, max:0.5, palette:['white','#deebf7','#9ecae1','#4292c6','#2171b5','#084594']}, 'Water Expansion Index 2025');
+Map.addLayer(minedSites, {color:'red'}, 'Mined Sites');
+Map.addLayer(nonMinedSites, {color:'lime'}, 'Non-Mined Sites');
+
+// Legends
+var vliLegend = ui.Panel({style:{position:'bottom-left', padding:'8px 15px'}});
+vliLegend.add(ui.Label('Vegetation Loss Index (ΔNDVI 2010→2025)', {fontWeight:'bold', fontSize:'14px'}));
+var vliColors = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'];
+var vliLabels = ['0.00 – 0.10','0.10 – 0.20','0.20 – 0.30','0.30 – 0.40','≥ 0.40 (Severe)'];
+for(var i=0;i<vliColors.length;i++){
+  vliLegend.add(ui.Panel([ui.Label('', {backgroundColor:vliColors[i], width:'60px', height:'20px', margin:'4px 8px'}), ui.Label(vliLabels[i], {margin:'4px 0px'})], ui.Panel.Layout.Flow('horizontal')));
+}
+Map.add(vliLegend);
+
+var weiLegend = ui.Panel({style:{position:'bottom-right', padding:'8px 15px'}});
+weiLegend.add(ui.Label('Water Expansion Index (New Mining Ponds)', {fontWeight:'bold', fontSize:'14px'}));
+var weiColors = ['#deebf7','#9ecae1','#4292c6','#2171b5','#084594'];
+var weiLabels = ['0.00 – 0.10','0.10 – 0.20','0.20 – 0.30','0.30 – 0.40','≥ 0.40 (High)'];
+for(var i=0;i<weiColors.length;i++){
+  weiLegend.add(ui.Panel([ui.Label('', {backgroundColor:weiColors[i], width:'60px', height:'20px', margin:'4px 8px'}), ui.Label(weiLabels[i], {margin:'4px 0px'})], ui.Panel.Layout.Flow('horizontal')));
+}
+Map.add(weiLegend);
+
+///////////////////////////////
+// 2. SENTINEL-5P CH₄ & CO (2018–2025)
+///////////////////////////////
+
+var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
+            .filterDate('2018-07-01','2025-12-31').filterBounds(aoi)
+            .select('CH4_column_volume_mixing_ratio_dry_air');
+
+var co = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO')
+           .filterDate('2018-07-01','2025-12-31').filterBounds(aoi)
+           .select('CO_column_number_density');
+
+var ch4Mean = ch4.mean().clip(aoi);
+var coMean = co.mean().clip(aoi);
+
+Map.addLayer(ch4Mean, {min:1800, max:1950, palette:['black','blue','cyan','green','yellow','red']}, 'CH4 Mean 2018–2025');
+Map.addLayer(coMean, {min:0.02, max:0.08, palette:['#000004','#3B1F6E','#8C50A4','#C4A3D3','#FFFFD4']}, 'CO Mean 2018–2025');
+
+///////////////////////////////
+// 3. MONTHLY ANOMALIES & CHARTS
+///////////////////////////////
+
+var startYear = 2018, endYear = 2025;
+var yearsList = ee.List.sequence(startYear,endYear);
+var months = ee.List.sequence(1,12);
+
+function makeMonthly(collection, year, month){
+  var start = ee.Date.fromYMD(year, month,1);
+  var end = start.advance(1,'month');
+  var img = collection.filterDate(start,end).mean();
+  var count = collection.filterDate(start,end).size();
+  return ee.Algorithms.If(count.gt(0), img.set('year',year).set('month',month).set('system:time_start', start.millis()), null);
+}
+
 var monthlyCH4 = ee.ImageCollection.fromImages(
-  years.map(function(y) {
-    return months.map(function(m) {
-      return makeMonthly(ch4, 'CH4_column_volume_mixing_ratio_dry_air', y, m);
-    });
-  }).flatten()
+  yearsList.map(function(y){ return months.map(function(m){ return makeMonthly(ch4,y,m); }); }).flatten()
 ).filter(ee.Filter.notNull(['system:time_start']));
 
-// Build monthly CO
 var monthlyCO = ee.ImageCollection.fromImages(
-  years.map(function(y) {
-    return months.map(function(m) {
-      return makeMonthly(co, 'CO_column_number_density', y, m);
-    });
-  }).flatten()
+  yearsList.map(function(y){ return months.map(function(m){ return makeMonthly(co,y,m); }); }).flatten()
 ).filter(ee.Filter.notNull(['system:time_start']));
 
-print('Valid monthly CH₄ images:', monthlyCH4.size());
-print('Valid monthly CO images:',  monthlyCO.size());
+var ch4Clim = ee.ImageCollection.fromImages(months.map(function(m){ return monthlyCH4.filter(ee.Filter.eq('month',m)).mean().set('month',m); }));
+var coClim = ee.ImageCollection.fromImages(months.map(function(m){ return monthlyCO.filter(ee.Filter.eq('month',m)).mean().set('month',m); }));
 
-// ==================== 4. Monthly Climatology & Anomalies ====================
-var ch4Clim = ee.ImageCollection.fromImages(
-  months.map(function(m) {
-    var filtered = monthlyCH4.filter(ee.Filter.eq('month', m));
-    return filtered.mean().set('month', m);
-  })
-);
-
-var coClim = ee.ImageCollection.fromImages(
-  months.map(function(m) {
-    var filtered = monthlyCO.filter(ee.Filter.eq('month', m));
-    return filtered.mean().set('month', m);
-  })
-);
-
-// Anomalies
-var ch4Anomalies = monthlyCH4.map(function(img) {
-  var m = img.get('month');
-  var clim = ch4Clim.filter(ee.Filter.eq('month', m)).first();
-  return img.subtract(clim).rename('CH4_anomaly')
-            .copyProperties(img, ['system:time_start','year','month']);
+var ch4Anomalies = monthlyCH4.map(function(img){ 
+  var clim = ch4Clim.filter(ee.Filter.eq('month', img.get('month'))).first();
+  return img.subtract(clim).rename('CH4_anomaly').copyProperties(img,['system:time_start','year','month']); 
 });
 
-var coAnomalies = monthlyCO.map(function(img) {
-  var m = img.get('month');
-  var clim = coClim.filter(ee.Filter.eq('month', m)).first();
-  return img.subtract(clim).rename('CO_anomaly')
-            .copyProperties(img, ['system:time_start','year','month']);
+var coAnomalies = monthlyCO.map(function(img){ 
+  var clim = coClim.filter(ee.Filter.eq('month', img.get('month'))).first();
+  return img.subtract(clim).rename('CO_anomaly').copyProperties(img,['system:time_start','year','month']); 
 });
 
-// ==================== 5. CHARTS – NOW WORKING ====================
-var chartCH4 = ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'Prestea Huni Valley Monthly CH₄ (ppbv)', vAxis: {title: 'CH₄ (ppbv)'}, lineWidth: 2, pointSize: 4});
-print(chartCH4);
+// Charts
+print(ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CH₄ (ppbv)', vAxis:{title:'CH₄'}, lineWidth:2, pointSize:4}));
+print(ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CH₄ Anomalies', colors:['#d73027'], lineWidth:2}));
+print(ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CO (mol/m²)', vAxis:{title:'CO'}, lineWidth:2}));
+print(ui.Chart.image.series(coAnomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CO Anomalies', colors:['#1a9850'], lineWidth:2}));
 
-var chartCH4Anom = ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'CH₄ Monthly Anomalies (ppbv)', colors: ['#d73027'], lineWidth: 2});
-print(chartCH4Anom);
+///////////////////////////////
+// 4. CO ANOMALY vs CUMULATIVE MINED AREA (Scatter)
+///////////////////////////////
 
-var chartCO = ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'Prestea Huni Valley Monthly CO (mol/m²)', vAxis: {title: 'CO (mol/m²)'}, lineWidth: 2});
-print(chartCO);
+var miningSitesWithYear = minedSites.map(function(f){ return f.set('year_first_active', ee.Algorithms.If(f.get('year'), f.get('year'), 2018)); });
 
-var chartCOAnom = ui.Chart.image.series(coAnomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'CO Monthly Anomalies (mol/m²)', colors: ['#1a9850'], lineWidth: 2});
-print(chartCOAnom);
+var mineBuffers = miningSitesWithYear.map(function(f){ return f.buffer(2500).intersection(aoi.geometry()); });
+var minedAreaFC = ee.FeatureCollection(yearsList.map(function(y){
+  var active = miningSitesWithYear.filter(ee.Filter.lte('year_first_active', y));
+  var buffers = active.map(function(f){ return f.geometry().buffer(2500).intersection(aoi.geometry()); });
+  var union = ee.FeatureCollection(buffers).union(1);
+  var areaHa = union.geometry().area().divide(10000);
+  return ee.Feature(null, {year:y, mined_area_ha:areaHa});
+}));
 
-// ==================== 6. EXPORTS ====================
-Export.image.toDrive({image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(),
-  description: 'Prestea_Mean_CH4_CO_2018_2025', folder: 'GHG_Data', fileNamePrefix: 'Prestea_Mean', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+// Annual CO anomaly
+var anomaliesMonthly = monthlyCO.map(function(img){
+  var c = coClim.filter(ee.Filter.eq('month', img.get('month'))).first();
+  return img.subtract(c).rename('CO_anomaly').set('year', img.get('year'));
+});
 
-Export.image.toDrive({image: monthlyCH4.toBands().clip(aoi).toFloat(), description: 'Prestea_CH4_Monthly', folder: 'GHG_Data', fileNamePrefix: 'Prestea_CH4_monthly', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
-Export.image.toDrive({image: monthlyCO.toBands().clip(aoi).toFloat(),  description: 'Prestea_CO_Monthly',  folder: 'GHG_Data', fileNamePrefix: 'Prestea_CO_monthly',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
-Export.image.toDrive({image: ch4Anomalies.toBands().clip(aoi).toFloat(), description: 'Prestea_CH4_Anomalies', folder: 'GHG_Data', fileNamePrefix: 'Prestea_CH4_anomalies', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
-Export.image.toDrive({image: coAnomalies.toBands().clip(aoi).toFloat(),  description: 'Prestea_CO_Anomalies',  folder: 'GHG_Data', fileNamePrefix: 'Prestea_CO_anomalies',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+var annualCO = ee.FeatureCollection(yearsList.map(function(y){
+  var img = anomaliesMonthly.filter(ee.Filter.eq('year', y)).mean();
+  var val = img.reduceRegions({collection: mineBuffers, reducer: ee.Reducer.mean(), scale:10000}).aggregate_mean('CO_anomaly');
+  return ee.Feature(null, {year:y, CO_anomaly: ee.Number(ee.Algorithms.If(val,val,0))});
+}));
 
-print('All done – no more empty collection errors!');
-print('Charts are now working. Monthly images with data:', monthlyCH4.size().getInfo(), 'CH₄ |', monthlyCO.size().getInfo(), 'CO');
+var finalTable = minedAreaFC.map(function(f){
+  var y = f.get('year');
+  var coF = annualCO.filter(ee.Filter.eq('year',y)).first();
+  var coVal = ee.Number(ee.Algorithms.If(coF, coF.get('CO_anomaly'),0));
+  return f.set('CO_anomaly', coVal);
+}));
+
+// Scatter plot
+var data = finalTable.toList(10).getInfo();
+var chart = ui.Chart.array.values({
+  array: data.map(function(d){ return d.properties.CO_anomaly; }),
+  axis: 0,
+  xLabels: data.map(function(d){ return d.properties.mined_area_ha; })
+}).setChartType('ScatterChart')
+.setOptions({
+  title:'CO Anomaly vs Cumulative Mined Area – Prestea Huni Valley',
+  hAxis:{title:'Cumulative Mined Area (ha)'},
+  vAxis:{title:'Annual Mean CO Anomaly (mol/m²)'},
+  pointSize:16,
+  colors:['#d7191c'],
+  trendlines:{0:{showR2:true, visibleInLegend:true, color:'red', lineWidth:6, opacity:0.9}},
+  legend:{position:'none'}
+});
+print(chart);
+
+// Pearson r and R²
+var x = data.map(function(d){ return d.properties.mined_area_ha; });
+var y = data.map(function(d){ return d.properties.CO_anomaly; });
+var n = x.length;
+var sumX = x.reduce(function(a,b){return a+b;},0);
+var sumY = y.reduce(function(a,b){return a+b;},0);
+var sumXY = x.map(function(v,i){return v*y[i];}).reduce(function(a,b){return a+b;},0);
+var sumX2 = x.map(function(v){return v*v;}).reduce(function(a,b){return a+b;},0);
+var sumY2 = y.map(function(v){return v*v;}).reduce(function(a,b){return a+b;},0);
+var r = (n*sumXY - sumX*sumY)/Math.sqrt((n*sumX2 - sumX*sumX)*(n*sumY2 - sumY*sumY));
+print('Pearson r =', Number(r).toFixed(4));
+print('R² =', Number(r*r).toFixed(4));
+
+// Exports
+Export.image.toDrive({image: VLI.addBands(WEI).toFloat(), description:'PresteaHuni_VLI_WEI_2025', folder:'Galamsey_Impact', fileNamePrefix:'PresteaHuni_VLI_WEI_2025', region:aoi.geometry(), scale:30, crs:'EPSG:32630', maxPixels:1e13});
+Export.image.toDrive({image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(), description:'PresteaHuni_S5P_CH4_CO_2018_2025', folder:'GHG_Data', fileNamePrefix:'PresteaHuni_S5P_CH4_CO_2018_2025', region:aoi.geometry(), scale:7000, maxPixels:1e10});
+Export.table.toDrive({collection:finalTable, folder:'GHG_Data', description:'PresteaHuni_CO_vs_MinedArea', fileFormat:'CSV'});
+
+print('PHASE 5 SCRIPT COMPLETE – Prestea Huni Valley, ready for maps, charts, legends, and exports.');
+
+
+
+// ============================================================================
+// END OF PHASE 5.1 – 5.3
+// ============================================================================
+
+
+// // ==================== 2. Sentinel-5P CH₄ & CO ====================
+// var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
+//   .filterDate('2018-07-01', '2025-12-31')
+//   .filterBounds(aoi.geometry())
+//   .select('CH4_column_volume_mixing_ratio_dry_air');
+
+// var co = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_CO')
+//   .filterDate('2018-07-01', '2025-12-31')
+//   .filterBounds(aoi.geometry())
+//   .select('CO_column_number_density');
+
+// print('S5P CH₄ images (2018–2025):', ch4.size());
+// print('S5P CO images (2018–2025):', co.size());
+
+// // ==================== 2. Overall Means ====================
+// var ch4Mean = ch4.mean().clip(aoi);
+// var coMean  = co.mean().clip(aoi);
+
+// Map.addLayer(ch4Mean, {min:1800, max:1950, palette:['black','blue','cyan','green','yellow','red']}, 
+//             'CH₄ Mean 2018–2025 (ppbv)', false);
+// Map.addLayer(coMean,  {min:0.02, max:0.08, palette:['#000004','#3B1F6E','#8C50A4','#C4A3D3','#FFFFD4']}, 
+//             'CO Mean 2018–2025 (mol/m²)', true);
+
+// // Legends (same as before — omitted here for brevity, copy from previous script if you want them)
+
+// // Stats
+// var meanCH4 = ch4Mean.reduceRegion(ee.Reducer.mean(), aoi.geometry(), 7000).get('CH4_column_volume_mixing_ratio_dry_air');
+// var meanCO  = coMean.reduceRegion(ee.Reducer.mean(), aoi.geometry(), 7000).get('CO_column_number_density');
+// print('Mean CH₄ (ppbv):', ee.Number(meanCH4).format('%.1f'));
+// print('Mean CO (mol/m²):', ee.Number(meanCO).format('%.4f'));
+
+// // ==================== 3. MONTHLY MEANS – ROBUST VERSION ====================
+// var startYear = 2018;
+// var endYear   = 2025;
+// var years = ee.List.sequence(startYear, endYear);
+// var months = ee.List.sequence(1,12);
+
+// // Function to create monthly mean (returns null if no data)
+// function makeMonthly(collection, bandName, year, month) {
+//   var start = ee.Date.fromYMD(year, month, 1);
+//   var end   = start.advance(1, 'month');
+//   var img = collection.filterDate(start, end).mean();
+//   var count = collection.filterDate(start, end).size();
+//   return ee.Algorithms.If(
+//     count.gt(0),
+//     img.set('year', year).set('month', month).set('system:time_start', start.millis()),
+//     null
+//   );
+// }
+
+// // Build monthly CH₄
+// var monthlyCH4 = ee.ImageCollection.fromImages(
+//   years.map(function(y) {
+//     return months.map(function(m) {
+//       return makeMonthly(ch4, 'CH4_column_volume_mixing_ratio_dry_air', y, m);
+//     });
+//   }).flatten()
+// ).filter(ee.Filter.notNull(['system:time_start']));
+
+// // Build monthly CO
+// var monthlyCO = ee.ImageCollection.fromImages(
+//   years.map(function(y) {
+//     return months.map(function(m) {
+//       return makeMonthly(co, 'CO_column_number_density', y, m);
+//     });
+//   }).flatten()
+// ).filter(ee.Filter.notNull(['system:time_start']));
+
+// print('Valid monthly CH₄ images:', monthlyCH4.size());
+// print('Valid monthly CO images:',  monthlyCO.size());
+
+// // ==================== 4. Monthly Climatology & Anomalies ====================
+// var ch4Clim = ee.ImageCollection.fromImages(
+//   months.map(function(m) {
+//     var filtered = monthlyCH4.filter(ee.Filter.eq('month', m));
+//     return filtered.mean().set('month', m);
+//   })
+// );
+
+// var coClim = ee.ImageCollection.fromImages(
+//   months.map(function(m) {
+//     var filtered = monthlyCO.filter(ee.Filter.eq('month', m));
+//     return filtered.mean().set('month', m);
+//   })
+// );
+
+// // Anomalies
+// var ch4Anomalies = monthlyCH4.map(function(img) {
+//   var m = img.get('month');
+//   var clim = ch4Clim.filter(ee.Filter.eq('month', m)).first();
+//   return img.subtract(clim).rename('CH4_anomaly')
+//             .copyProperties(img, ['system:time_start','year','month']);
+// });
+
+// var coAnomalies = monthlyCO.map(function(img) {
+//   var m = img.get('month');
+//   var clim = coClim.filter(ee.Filter.eq('month', m)).first();
+//   return img.subtract(clim).rename('CO_anomaly')
+//             .copyProperties(img, ['system:time_start','year','month']);
+// });
+
+// // ==================== 5. CHARTS – NOW WORKING ====================
+// var chartCH4 = ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'Prestea Huni Valley Monthly CH₄ (ppbv)', vAxis: {title: 'CH₄ (ppbv)'}, lineWidth: 2, pointSize: 4});
+// print(chartCH4);
+
+// var chartCH4Anom = ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'CH₄ Monthly Anomalies (ppbv)', colors: ['#d73027'], lineWidth: 2});
+// print(chartCH4Anom);
+
+// var chartCO = ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'Prestea Huni Valley Monthly CO (mol/m²)', vAxis: {title: 'CO (mol/m²)'}, lineWidth: 2});
+// print(chartCO);
+
+// var chartCOAnom = ui.Chart.image.series(coAnomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+//   .setOptions({title: 'CO Monthly Anomalies (mol/m²)', colors: ['#1a9850'], lineWidth: 2});
+// print(chartCOAnom);
+
+// // ==================== 6. EXPORTS ====================
+// Export.image.toDrive({image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(),
+//   description: 'Prestea_Mean_CH4_CO_2018_2025', folder: 'GHG_Data', fileNamePrefix: 'Prestea_Mean', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+
+// Export.image.toDrive({image: monthlyCH4.toBands().clip(aoi).toFloat(), description: 'Prestea_CH4_Monthly', folder: 'GHG_Data', fileNamePrefix: 'Prestea_CH4_monthly', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+// Export.image.toDrive({image: monthlyCO.toBands().clip(aoi).toFloat(),  description: 'Prestea_CO_Monthly',  folder: 'GHG_Data', fileNamePrefix: 'Prestea_CO_monthly',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+// Export.image.toDrive({image: ch4Anomalies.toBands().clip(aoi).toFloat(), description: 'Prestea_CH4_Anomalies', folder: 'GHG_Data', fileNamePrefix: 'Prestea_CH4_anomalies', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+// Export.image.toDrive({image: coAnomalies.toBands().clip(aoi).toFloat(),  description: 'Prestea_CO_Anomalies',  folder: 'GHG_Data', fileNamePrefix: 'Prestea_CO_anomalies',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+
+// print('All done – no more empty collection errors!');
+// print('Charts are now working. Monthly images with data:', monthlyCH4.size().getInfo(), 'CH₄ |', monthlyCO.size().getInfo(), 'CO');
