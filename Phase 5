@@ -6,42 +6,29 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
 // Works even when some months have zero data
 ///////////////////////////////
 
-//var aoi = ee.FeatureCollection('projects/ghana-project-73326/assets/Tarkiwa_Nsuaem');
+// 0. SETUP AOI AND SITES
+//var aoi = ee.FeatureCollection('projects/mabeltsadia/assets/Prestea_Huni_Valley_WR');
+var minedSites = ee.FeatureCollection('projects/mabeltsadia/assets/mined_polygons_export');
+
 Map.centerObject(aoi, 10);
 Map.setOptions('SATELLITE');
 Map.addLayer(aoi, {color: 'red'}, 'Prestea Huni Valley AOI', false);
-
-
-///////////////////////////////
-// PHASE 4: PRESTEA HUNI VALLEY – VEGETATION, WATER, AND GHG INDICES
-///////////////////////////////
-
-///////////////////////////////
-// 0. SETUP AOI AND SITES
-///////////////////////////////
-
-// var aoi = ee.FeatureCollection('projects/mabeltsadia/assets/Prestea_Huni_Valley_WR');
-var minedSites = ee.FeatureCollection('projects/mabeltsadia/assets/mined_polygons_export');
-
-// Optional: visualize on the map
 Map.addLayer(minedSites, {color: 'red'}, 'Mined Polygons');
-Map.centerObject(minedSites, 10);
-
 
 // Generate non-mined/control sites dynamically
-// Create a 2.5 km buffer around mined sites to avoid overlap
+// Create a 2.5 km buffer around mined sites
 var minedBuffer = minedSites.map(function(f){ return f.buffer(2500); });
-var nonMinedCandidates = aoi.filterBounds(aoi.geometry())
-  .difference(minedBuffer.union(1));
+var minedUnion = minedBuffer.union().geometry();
+var nonMinedCandidates = aoi.geometry().difference(minedUnion, 1);
+
 var nonMinedSites = ee.FeatureCollection.randomPoints({
-  region: nonMinedCandidates.geometry(),
+  region: nonMinedCandidates,
   points: minedSites.size(),
   seed: 42
 }).map(function(f){ return ee.Feature(f).set('class',0); });
 
-// Map.centerObject(aoi, 10);
-// Map.setOptions('SATELLITE');
-// Map.addLayer(aoi, {color:'white', fillColor:'00000000'}, 'Prestea-Huni Valley AOI');
+// Optional: visualize non-mined sites
+Map.addLayer(nonMinedSites, {color:'lime'}, 'Non-Mined Sites');
 
 ///////////////////////////////
 // 1. VEGETATION LOSS & WATER EXPANSION (2010–2025)
@@ -68,18 +55,23 @@ var annual = ee.ImageCollection.fromImages(
   years.map(function(y){
     var start = ee.Date.fromYMD(y,1,1);
     var end = start.advance(1,'year');
+
     var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
                .filterDate(start,end).filterBounds(aoi)
                .map(function(i){return harmonize(i,'SR_B3','SR_B4');});
+
     var l7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
                .filterDate(start,end).filterBounds(aoi)
                .map(function(i){return harmonize(i,'SR_B3','SR_B4');});
+
     var l8l9 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
                   .merge(ee.ImageCollection('LANDSAT/LC09/C02/T1_L2'))
                   .filterDate(start,end).filterBounds(aoi)
                   .map(maskClouds)
                   .map(function(i){return harmonize(i,'SR_B4','SR_B5');});
+
     var coll = l5.merge(l7).merge(l8l9).median().clip(aoi);
+
     return coll
       .addBands(coll.normalizedDifference(['NIR','Red']).rename('NDVI'))
       .addBands(coll.expression('NIR - Red', {NIR: coll.select('NIR'), Red: coll.select('Red')}).rename('NDWI_Gao'))
@@ -90,18 +82,15 @@ var annual = ee.ImageCollection.fromImages(
 var img2010 = annual.filter(ee.Filter.eq('year',2010)).first();
 var img2025 = annual.filter(ee.Filter.eq('year',2025)).first();
 
-// Delta Images
 var deltaNDVI = img2010.select('NDVI').subtract(img2025.select('NDVI')).rename('dNDVI');
 var deltaNDWI = img2025.select('NDWI_Gao').subtract(img2010.select('NDWI_Gao')).rename('dNDWI');
 
-// Training points
 var points = minedSites.map(function(f){return f.set('class',1);})
                        .merge(nonMinedSites);
 
 var training = deltaNDVI.addBands(deltaNDWI)
               .sampleRegions({collection: points, properties:['class'], scale:30});
 
-// Extract thresholds
 function getThreshold(classifier){
   var treeString = ee.String(classifier.explain().get('tree'));
   var match = treeString.match('[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?');
@@ -114,20 +103,16 @@ var cartNDWI = ee.Classifier.smileCart().train({features: training, classPropert
 var threshNDVI = getThreshold(cartNDVI);
 var threshNDWI = getThreshold(cartNDWI);
 
-// Final Indices
-var VLI = deltaNDVI.clip(aoi).rename('Vegetation_Loss_Index');
-var WEI = deltaNDWI.clip(aoi).rename('Water_Expansion_Index');
+var VLI = deltaNDVI.rename('Vegetation_Loss_Index');
+var WEI = deltaNDWI.rename('Water_Expansion_Index');
 
-var severeLoss = VLI.gte(threshNDVI);
-var newWater = WEI.gte(threshNDWI).and(img2025.select('NDWI_Gao').gt(0.05));
-
-// Map Layers – ONLY 1 layer each
 Map.addLayer(VLI.selfMask(), {min:0, max:0.7, palette:['white','#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026']}, 'Vegetation Loss Index 2025');
 Map.addLayer(WEI.selfMask(), {min:0, max:0.5, palette:['white','#deebf7','#9ecae1','#4292c6','#2171b5','#084594']}, 'Water Expansion Index 2025');
-Map.addLayer(minedSites, {color:'red'}, 'Mined Sites');
-Map.addLayer(nonMinedSites, {color:'lime'}, 'Non-Mined Sites');
 
+///////////////////////////////
 // Legends
+///////////////////////////////
+
 var vliLegend = ui.Panel({style:{position:'bottom-left', padding:'8px 15px'}});
 vliLegend.add(ui.Label('Vegetation Loss Index (ΔNDVI 2010→2025)', {fontWeight:'bold', fontSize:'14px'}));
 var vliColors = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'];
@@ -175,17 +160,16 @@ var months = ee.List.sequence(1,12);
 function makeMonthly(collection, year, month){
   var start = ee.Date.fromYMD(year, month,1);
   var end = start.advance(1,'month');
-  var img = collection.filterDate(start,end).mean();
-  var count = collection.filterDate(start,end).size();
-  return ee.Algorithms.If(count.gt(0), img.set('year',year).set('month',month).set('system:time_start', start.millis()), null);
+  var imgs = collection.filterDate(start,end);
+  return ee.Algorithms.If(imgs.size().gt(0), imgs.mean().set('year',year).set('month',month).set('system:time_start', start.millis()), null);
 }
 
 var monthlyCH4 = ee.ImageCollection.fromImages(
-  yearsList.map(function(y){ return months.map(function(m){ return makeMonthly(ch4,y,m); }); }).flatten()
+  yearsList.map(function(y){ return months.map(function(m){ return makeMonthly(ch4,y,m); }).flatten(); }).flatten()
 ).filter(ee.Filter.notNull(['system:time_start']));
 
 var monthlyCO = ee.ImageCollection.fromImages(
-  yearsList.map(function(y){ return months.map(function(m){ return makeMonthly(co,y,m); }); }).flatten()
+  yearsList.map(function(y){ return months.map(function(m){ return makeMonthly(co,y,m); }).flatten(); }).flatten()
 ).filter(ee.Filter.notNull(['system:time_start']));
 
 var ch4Clim = ee.ImageCollection.fromImages(months.map(function(m){ return monthlyCH4.filter(ee.Filter.eq('month',m)).mean().set('month',m); }));
@@ -202,10 +186,14 @@ var coAnomalies = monthlyCO.map(function(img){
 });
 
 // Charts
-print(ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CH₄ (ppbv)', vAxis:{title:'CH₄'}, lineWidth:2, pointSize:4}));
-print(ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CH₄ Anomalies', colors:['#d73027'], lineWidth:2}));
-print(ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CO (mol/m²)', vAxis:{title:'CO'}, lineWidth:2}));
-print(ui.Chart.image.series(coAnomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start').setOptions({title:'Monthly CO Anomalies', colors:['#1a9850'], lineWidth:2}));
+print(ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+      .setOptions({title:'Monthly CH₄ (ppbv)', vAxis:{title:'CH₄'}, lineWidth:2, pointSize:4}));
+print(ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+      .setOptions({title:'Monthly CH₄ Anomalies', colors:['#d73027'], lineWidth:2}));
+print(ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+      .setOptions({title:'Monthly CO (mol/m²)', vAxis:{title:'CO'}, lineWidth:2}));
+print(ui.Chart.image.series(coAnomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
+      .setOptions({title:'Monthly CO Anomalies', colors:['#1a9850'], lineWidth:2}));
 
 ///////////////////////////////
 // 4. CO ANOMALY vs CUMULATIVE MINED AREA (Scatter)
@@ -216,13 +204,12 @@ var miningSitesWithYear = minedSites.map(function(f){ return f.set('year_first_a
 var mineBuffers = miningSitesWithYear.map(function(f){ return f.buffer(2500).intersection(aoi.geometry()); });
 var minedAreaFC = ee.FeatureCollection(yearsList.map(function(y){
   var active = miningSitesWithYear.filter(ee.Filter.lte('year_first_active', y));
-  var buffers = active.map(function(f){ return f.geometry().buffer(2500).intersection(aoi.geometry()); });
-  var union = ee.FeatureCollection(buffers).union(1);
-  var areaHa = union.geometry().area().divide(10000);
+  var buffers = active.map(function(f){ return f.buffer(2500).intersection(aoi.geometry()); });
+  var union = ee.FeatureCollection(buffers).union().geometry();
+  var areaHa = union.area().divide(10000);
   return ee.Feature(null, {year:y, mined_area_ha:areaHa});
 }));
 
-// Annual CO anomaly
 var anomaliesMonthly = monthlyCO.map(function(img){
   var c = coClim.filter(ee.Filter.eq('month', img.get('month'))).first();
   return img.subtract(c).rename('CO_anomaly').set('year', img.get('year'));
@@ -239,7 +226,7 @@ var finalTable = minedAreaFC.map(function(f){
   var coF = annualCO.filter(ee.Filter.eq('year',y)).first();
   var coVal = ee.Number(ee.Algorithms.If(coF, coF.get('CO_anomaly'),0));
   return f.set('CO_anomaly', coVal);
-}));
+});
 
 // Scatter plot
 var data = finalTable.toList(10).getInfo();
@@ -273,12 +260,35 @@ print('Pearson r =', Number(r).toFixed(4));
 print('R² =', Number(r*r).toFixed(4));
 
 // Exports
-Export.image.toDrive({image: VLI.addBands(WEI).toFloat(), description:'PresteaHuni_VLI_WEI_2025', folder:'Galamsey_Impact', fileNamePrefix:'PresteaHuni_VLI_WEI_2025', region:aoi.geometry(), scale:30, crs:'EPSG:32630', maxPixels:1e13});
-Export.image.toDrive({image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(), description:'PresteaHuni_S5P_CH4_CO_2018_2025', folder:'GHG_Data', fileNamePrefix:'PresteaHuni_S5P_CH4_CO_2018_2025', region:aoi.geometry(), scale:7000, maxPixels:1e10});
-Export.table.toDrive({collection:finalTable, folder:'GHG_Data', description:'PresteaHuni_CO_vs_MinedArea', fileFormat:'CSV'});
+Export.image.toDrive({
+  image: VLI.addBands(WEI).toFloat(),
+  description:'PresteaHuni_VLI_WEI_2025',
+  folder:'Galamsey_Impact',
+  fileNamePrefix:'PresteaHuni_VLI_WEI_2025',
+  region:aoi.geometry(),
+  scale:30,
+  crs:'EPSG:32630',
+  maxPixels:1e13
+});
+
+Export.image.toDrive({
+  image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(),
+  description:'PresteaHuni_S5P_CH4_CO_2018_2025',
+  folder:'GHG_Data',
+  fileNamePrefix:'PresteaHuni_S5P_CH4_CO_2018_2025',
+  region:aoi.geometry(),
+  scale:7000,
+  maxPixels:1e10
+});
+
+Export.table.toDrive({
+  collection:finalTable,
+  folder:'GHG_Data',
+  description:'PresteaHuni_CO_vs_MinedArea',
+  fileFormat:'CSV'
+});
 
 print('PHASE 5 SCRIPT COMPLETE – Prestea Huni Valley, ready for maps, charts, legends, and exports.');
-
 
 
 // ============================================================================
