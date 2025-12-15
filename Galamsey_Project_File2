@@ -38,7 +38,7 @@ Export.table.toDrive({
 Export.table.toAsset({
   collection: minedPolygons,
   description: 'mined_polygons_asset',       // Asset export job name
-  assetId: 'projects/mabeltsadia/assets/5km_buffer_AOI' // Replace with your GEE username
+  assetId: 'projects/mabeltsadia/assets' // Replace with your GEE username
 });
 
 // Optional: visualize on the map
