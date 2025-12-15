@@ -41,9 +41,9 @@ Export.table.toAsset({
   assetId: 'projects/mabeltsadia/assets' // Replace with your GEE username
 });
 
-// Optional: visualize on the map
-Map.addLayer(minedPolygons, {color: 'red'}, 'Mined Sites');
-Map.centerObject(minedPolygons, 10);
+// // Optional: visualize on the map
+// Map.addLayer(minedPolygons, {color: 'red'}, 'Mined Sites');
+// Map.centerObject(minedPolygons, 10);
 
 
 
