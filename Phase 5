@@ -9,7 +9,7 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
 //var aoi = ee.FeatureCollection('projects/ghana-project-73326/assets/Tarkiwa_Nsuaem');
 Map.centerObject(aoi, 10);
 Map.setOptions('SATELLITE');
-Map.addLayer(aoi, {color: 'red'}, 'Tarkwa-Nsuaem AOI', false);
+Map.addLayer(aoi, {color: 'red'}, 'Prestea Huni Valley AOI', false);
 
 // ==================== 1. Sentinel-5P CH₄ & CO ====================
 var ch4 = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
@@ -114,7 +114,7 @@ var coAnomalies = monthlyCO.map(function(img) {
 
 // ==================== 5. CHARTS – NOW WORKING ====================
 var chartCH4 = ui.Chart.image.series(monthlyCH4, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'Tarkwa-Nsuaem Monthly CH₄ (ppbv)', vAxis: {title: 'CH₄ (ppbv)'}, lineWidth: 2, pointSize: 4});
+  .setOptions({title: 'Prestea Huni Valley Monthly CH₄ (ppbv)', vAxis: {title: 'CH₄ (ppbv)'}, lineWidth: 2, pointSize: 4});
 print(chartCH4);
 
 var chartCH4Anom = ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
@@ -122,7 +122,7 @@ var chartCH4Anom = ui.Chart.image.series(ch4Anomalies, aoi, ee.Reducer.mean(), 7
 print(chartCH4Anom);
 
 var chartCO = ui.Chart.image.series(monthlyCO, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
-  .setOptions({title: 'Tarkwa-Nsuaem Monthly CO (mol/m²)', vAxis: {title: 'CO (mol/m²)'}, lineWidth: 2});
+  .setOptions({title: 'Prestea Huni Valley Monthly CO (mol/m²)', vAxis: {title: 'CO (mol/m²)'}, lineWidth: 2});
 print(chartCO);
 
 var chartCOAnom = ui.Chart.image.series(coAnomalies, aoi, ee.Reducer.mean(), 7000, 'system:time_start')
@@ -131,12 +131,12 @@ print(chartCOAnom);
 
 // ==================== 6. EXPORTS ====================
 Export.image.toDrive({image: ch4Mean.rename('CH4').addBands(coMean.rename('CO')).toFloat(),
-  description: 'Tarkwa_Mean_CH4_CO_2018_2025', folder: 'GHG_Data', fileNamePrefix: 'Tarkwa_Mean', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+  description: 'Prestea_Mean_CH4_CO_2018_2025', folder: 'GHG_Data', fileNamePrefix: 'Prestea_Mean', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
 
-Export.image.toDrive({image: monthlyCH4.toBands().clip(aoi).toFloat(), description: 'Tarkwa_CH4_Monthly', folder: 'GHG_Data', fileNamePrefix: 'Tarkwa_CH4_monthly', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
-Export.image.toDrive({image: monthlyCO.toBands().clip(aoi).toFloat(),  description: 'Tarkwa_CO_Monthly',  folder: 'GHG_Data', fileNamePrefix: 'Tarkwa_CO_monthly',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
-Export.image.toDrive({image: ch4Anomalies.toBands().clip(aoi).toFloat(), description: 'Tarkwa_CH4_Anomalies', folder: 'GHG_Data', fileNamePrefix: 'Tarkwa_CH4_anomalies', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
-Export.image.toDrive({image: coAnomalies.toBands().clip(aoi).toFloat(),  description: 'Tarkwa_CO_Anomalies',  folder: 'GHG_Data', fileNamePrefix: 'Tarkwa_CO_anomalies',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+Export.image.toDrive({image: monthlyCH4.toBands().clip(aoi).toFloat(), description: 'Prestea_CH4_Monthly', folder: 'GHG_Data', fileNamePrefix: 'Prestea_CH4_monthly', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+Export.image.toDrive({image: monthlyCO.toBands().clip(aoi).toFloat(),  description: 'Prestea_CO_Monthly',  folder: 'GHG_Data', fileNamePrefix: 'Prestea_CO_monthly',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+Export.image.toDrive({image: ch4Anomalies.toBands().clip(aoi).toFloat(), description: 'Prestea_CH4_Anomalies', folder: 'GHG_Data', fileNamePrefix: 'Prestea_CH4_anomalies', region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
+Export.image.toDrive({image: coAnomalies.toBands().clip(aoi).toFloat(),  description: 'Prestea_CO_Anomalies',  folder: 'GHG_Data', fileNamePrefix: 'Prestea_CO_anomalies',  region: aoi.geometry(), scale: 7000, maxPixels: 1e10});
 
 print('All done – no more empty collection errors!');
 print('Charts are now working. Monthly images with data:', monthlyCH4.size().getInfo(), 'CH₄ |', monthlyCO.size().getInfo(), 'CO');
