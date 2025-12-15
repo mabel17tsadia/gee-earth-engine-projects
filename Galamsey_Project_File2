@@ -23,436 +23,461 @@ var aoi = ee.FeatureCollection("projects/mabeltsadia/assets/Prestea_Huni_Valley_
             })]);
 /***** End of imports. If edited, may not auto-convert in the playground. *****/
 
-// ========================================================
-// GALAMSEY PROJECT
-// STEP 1: COMPOSITES (all years, exports all)
-// STEP 2: INDICES (all years, but visualize only 2025)
-// ========================================================
+//////////////////////EXPORT MINES////////////////////////////
+// Your existing FeatureCollection
+var minedPolygons = minedPolygons; // Already defined in your script
 
-//-------------------------------------------------------
-// 1. LOAD AOI FROM ASSET
-Map.centerObject(aoi);
-Map.addLayer(aoi.style({
-  color: 'yellow', width: 2, fillColor: '00000000'
-}), {}, 'AOI Outline', false);
-
-// ---------------------------
-// USER PARAMETERS
-// ---------------------------
-var folderName = 'Galamsey_Project_BDG';
-var startYear = 2010;
-var endYear = 2025;
-var visualYear = 2025; // Only this year will display layers
-
-// ---------------------------
-// LOAD LANDSAT 8 SR COLLECTION
-// ---------------------------
-var l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2');
-
-// ---------------------------
-// CLOUD MASK FUNCTION USING QA_PIXEL
-// ---------------------------
-function maskL8sr(image) {
-  var qaPixel = image.select('QA_PIXEL');
-  var cloudShadowBitMask = (1 << 3);
-  var cloudBitMask = (1 << 5);
-  var mask = qaPixel.bitwiseAnd(cloudShadowBitMask).eq(0)
-              .and(qaPixel.bitwiseAnd(cloudBitMask).eq(0));
-
-  return image.updateMask(mask)
-              .multiply(0.0000275)
-              .add(-0.2)
-              .select(
-                ['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','SR_B7'],
-                ['B2','B3','B4','B5','B6','B7']
-              );
-}
-
-
-
-// ---------------------------
-// SPECTRAL INDICES FUNCTION
-// ---------------------------
-function addIndices(image) {
-  var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
-  var evi = image.expression(
-    '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
-      'NIR': image.select('B5_p20'),
-      'RED': image.select('B4_p20'),
-      'BLUE': image.select('B2_p20')
-    }).rename('EVI');
-  var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
-  var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
-  var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
-  var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
-  var bsi = image.expression(
-    '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
-      'SWIR1': image.select('B6_p20'),
-      'RED': image.select('B4_p20'),
-      'NIR': image.select('B5_p20'),
-      'BLUE': image.select('B2_p20')
-    }).rename('BSI');
-  var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
-  var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
-  var gpi = image.expression(
-    '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
-      'RED': image.select('B4_p20'),
-      'BLUE': image.select('B2_p20'),
-      'SWIR1': image.select('B6_p20'),
-      'SWIR2': image.select('B7_p20'),
-      'GREEN': image.select('B3_p20'),
-      'NIR': image.select('B5_p20')
-    }).rename('GPI');
-
-  return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
-}
-
-// ---------------------------
-// VISUALIZATION PARAMETERS
-// ---------------------------
-var vis = {
-  NDVI: {min: 0, max: 1, palette: ['red', 'yellow', 'green']},
-  EVI: {min: 0, max: 1, palette: ['brown', 'yellow', 'darkgreen']},
-  NDWI: {min: -1, max: 1, palette: ['brown','blue']},
-  MNDWI: {min: -1, max: 1, palette: ['brown','cyan']},
-  NDBI: {min: -1, max: 1, palette: ['blue','white','brown']},
-  NBR: {min: -1, max: 1, palette: ['red','white','green']},
-  BSI: {min: -1, max: 1, palette: ['green','yellow','brown']},
-  IOI: {min: 0, max: 3, palette: ['blue','white','red']},
-  CMR: {min: 0, max: 2, palette: ['purple','white','orange']},
-  GPI: {min: 0, max: 3, palette: ['blue','white','red']}
-};
-
-// ========================================================
-// LOOP THROUGH YEARS
-// ========================================================
-for (var year = startYear; year <= endYear; year++) {
-  var start = ee.Date.fromYMD(year - 1, 1, 1);
-  var end = ee.Date.fromYMD(year + 1, 12, 31);
-
-  var l8_filtered = l8.filterBounds(aoi)
-                      .filterDate(start, end)
-                      .map(maskL8sr);
-
-  print('Year ' + year + ' image count:', l8_filtered.size());
-  if (l8_filtered.size().getInfo() === 0) continue;
-
-  var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
-  var filled = composite.focal_mean({
-    radius: 90, units: 'meters', kernelType: 'circle'
-  }).blend(composite);
-
-  // Export composite
-  Export.image.toDrive({
-    image: composite,
-    description: 'L8_' + year + '_Composite',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
-
-  // Add indices
-  var indices = addIndices(filled);
-
-  // Export indices
-  Export.image.toDrive({
-    image: indices,
-    description: 'L8_' + year + '_Composite_Indices',
-    folder: folderName,
-    fileNamePrefix: 'L8_' + year + '_Composite_Indices',
-    region: aoi,
-    scale: 30,
-    crs: 'EPSG:32630',
-    maxPixels: 1e13
-  });
-
-  // ---------------------------------------------
-  // SHOW ONLY 2025 LAYERS ON MAP
-  // (Uncomment to show for other years)
-  // ---------------------------------------------
-  if (year === visualYear) {
-    Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-                year + ' Composite', false);
-
-    Object.keys(vis).forEach(function(key) {
-      Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
-    });
-  }
-
-  // Uncomment this block below to visualize other years
-  /*
-  if (year === 2020) {
-    Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
-                year + ' Composite', false);
-    Object.keys(vis).forEach(function(key) {
-      Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
-    });
-  }
-  */
-}
-
-// ========================================================
-// LEGEND PANEL (scrollable)
-// ========================================================
-var legends = ui.Panel({
-  layout: ui.Panel.Layout.flow('vertical'),
-  style: {width: '160px', padding: '8px'}
+// --- 1. Export to Google Drive ---
+Export.table.toDrive({
+  collection: minedPolygons,
+  description: 'mined_polygons_export', // Export job name
+  fileFormat: 'SHP'                     // Options: 'SHP', 'CSV', 'KML', 'GeoJSON'
 });
 
-legends.add(ui.Label({
-  value: 'Spectral Indices (2025)',
-  style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
-}));
-
-Object.keys(vis).forEach(function (key) {
-  legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
-  var colorBar = ui.Thumbnail({
-    image: ee.Image.pixelLonLat().select(0)
-            .multiply(vis[key].max - vis[key].min)
-            .add(vis[key].min),
-    params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
-            min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
-    style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
-  });
-  legends.add(colorBar);
+// --- 2. Export to GEE Asset ---
+Export.table.toAsset({
+  collection: minedPolygons,
+  description: 'mined_polygons_asset',       // Asset export job name
+  assetId: 'projects/mabeltsadia/assets/5km_buffer_AOI' // Replace with your GEE username
 });
 
-// === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
-var scrollPanel = ui.Panel(
-  // widgets
-  [ legends ],
-  // layout
-  ui.Panel.Layout.flow('vertical'),
-  // style
-  {
-    position: 'bottom-left',
-    width: '180px',
-    height: '250px',         // fixed height -> scrollbar appears when needed
-    padding: '4px',
-    backgroundColor: 'rgba(255,255,255,0.8)'
-  }
-);
-
-Map.add(scrollPanel);
-
-//////////BUILD IMAGE COMPOSITES//////////////
-var composites = {};  // storage dictionary
-
-for (var year = startYear; year <= endYear; year++) {
-  var start = ee.Date.fromYMD(year - 1, 1, 1);
-  var end   = ee.Date.fromYMD(year + 1, 12, 31);
-  var l8_filtered = l8.filterBounds(aoi)
-                      .filterDate(start, end)
-                      .map(maskL8sr);
-  var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
-  var filled = composite.focal_mean({radius: 90, units: 'meters'}).blend(composite);
-
-  composites[year] = filled;  // store by year
-}
-
-
-//////////////BUILDING INDICE COMPOSITES/////////////
-var composites_with_indices = {};
-for (var year = startYear; year <= endYear; year++) {
-  var img = composites[year];
-  if (year === 2025) { // compute indices only for 2025 to save memory
-    composites_with_indices[year] = addIndices(img);
-  }
-}
+// Optional: visualize on the map
+Map.addLayer(minedPolygons, {color: 'red'}, 'Mined Sites');
+Map.centerObject(minedPolygons, 10);
 
 
 
-// =====================================================
-// STEP 3A — Label Training Samples
-// =====================================================
 
-// Load your mined polygons
-print('Mined polygons loaded:', minedPolygons.size());
+// // ========================================================
+// // GALAMSEY PROJECT
+// // STEP 1: COMPOSITES (all years, exports all)
+// // STEP 2: INDICES (all years, but visualize only 2025)
+// // ========================================================
 
-// Give mined label = 1
-var minedSamples = minedPolygons.map(function(f){ return f.set('class', 1); });
+// //-------------------------------------------------------
+// // 1. LOAD AOI FROM ASSET
+// Map.centerObject(aoi);
+// Map.addLayer(aoi.style({
+//   color: 'yellow', width: 2, fillColor: '00000000'
+// }), {}, 'AOI Outline', false);
 
-// Define AOI (same one from step 1)
-var AOI = aoi;  // reuse from your existing script
+// // ---------------------------
+// // USER PARAMETERS
+// // ---------------------------
+// var folderName = 'Galamsey_Project_BDG';
+// var startYear = 2010;
+// var endYear = 2025;
+// var visualYear = 2025; // Only this year will display layers
 
-// Buffer mined areas to exclude near zones for non-mined sampling
-var minedBuffer = minedSamples.geometry().buffer(200);
+// // ---------------------------
+// // LOAD LANDSAT 8 SR COLLECTION
+// // ---------------------------
+// var l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2');
 
-// Generate random non-mined points outside mined zones
-var nonMinedSamples = ee.FeatureCollection.randomPoints({
-  region: AOI.geometry().difference(minedBuffer),
-  points: 100, // adjust number based on your AOI size
-  seed: 123
-}).map(function(f){ return f.set('class', 0); });
+// // ---------------------------
+// // CLOUD MASK FUNCTION USING QA_PIXEL
+// // ---------------------------
+// function maskL8sr(image) {
+//   var qaPixel = image.select('QA_PIXEL');
+//   var cloudShadowBitMask = (1 << 3);
+//   var cloudBitMask = (1 << 5);
+//   var mask = qaPixel.bitwiseAnd(cloudShadowBitMask).eq(0)
+//               .and(qaPixel.bitwiseAnd(cloudBitMask).eq(0));
 
-// Merge mined + non-mined
-var labeledSamples = minedSamples.merge(nonMinedSamples);
-print('Total labeled samples:', labeledSamples.size());
+//   return image.updateMask(mask)
+//               .multiply(0.0000275)
+//               .add(-0.2)
+//               .select(
+//                 ['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','SR_B7'],
+//                 ['B2','B3','B4','B5','B6','B7']
+//               );
+// }
 
-Map.addLayer(minedSamples, {color: 'red'}, 'Mined Samples');
-Map.addLayer(nonMinedSamples, {color: 'green'}, 'Non-Mined Samples');
+
+
+// // ---------------------------
+// // SPECTRAL INDICES FUNCTION
+// // ---------------------------
+// function addIndices(image) {
+//   var ndvi = image.normalizedDifference(['B5_p20', 'B4_p20']).rename('NDVI');
+//   var evi = image.expression(
+//     '2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))', {
+//       'NIR': image.select('B5_p20'),
+//       'RED': image.select('B4_p20'),
+//       'BLUE': image.select('B2_p20')
+//     }).rename('EVI');
+//   var ndwi = image.normalizedDifference(['B3_p20','B5_p20']).rename('NDWI');
+//   var mndwi = image.normalizedDifference(['B3_p20','B6_p20']).rename('MNDWI');
+//   var ndbi = image.normalizedDifference(['B6_p20','B5_p20']).rename('NDBI');
+//   var nbr = image.normalizedDifference(['B5_p20','B7_p20']).rename('NBR');
+//   var bsi = image.expression(
+//     '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {
+//       'SWIR1': image.select('B6_p20'),
+//       'RED': image.select('B4_p20'),
+//       'NIR': image.select('B5_p20'),
+//       'BLUE': image.select('B2_p20')
+//     }).rename('BSI');
+//   var ioi = image.select('B4_p20').divide(image.select('B2_p20')).rename('IOI');
+//   var cmr = image.select('B6_p20').divide(image.select('B7_p20')).rename('CMR');
+//   var gpi = image.expression(
+//     '((RED/BLUE) + (SWIR1/SWIR2)) / (GREEN + NIR)', {
+//       'RED': image.select('B4_p20'),
+//       'BLUE': image.select('B2_p20'),
+//       'SWIR1': image.select('B6_p20'),
+//       'SWIR2': image.select('B7_p20'),
+//       'GREEN': image.select('B3_p20'),
+//       'NIR': image.select('B5_p20')
+//     }).rename('GPI');
+
+//   return image.addBands([ndvi, evi, ndwi, mndwi, ndbi, nbr, bsi, ioi, cmr, gpi]);
+// }
+
+// // ---------------------------
+// // VISUALIZATION PARAMETERS
+// // ---------------------------
+// var vis = {
+//   NDVI: {min: 0, max: 1, palette: ['red', 'yellow', 'green']},
+//   EVI: {min: 0, max: 1, palette: ['brown', 'yellow', 'darkgreen']},
+//   NDWI: {min: -1, max: 1, palette: ['brown','blue']},
+//   MNDWI: {min: -1, max: 1, palette: ['brown','cyan']},
+//   NDBI: {min: -1, max: 1, palette: ['blue','white','brown']},
+//   NBR: {min: -1, max: 1, palette: ['red','white','green']},
+//   BSI: {min: -1, max: 1, palette: ['green','yellow','brown']},
+//   IOI: {min: 0, max: 3, palette: ['blue','white','red']},
+//   CMR: {min: 0, max: 2, palette: ['purple','white','orange']},
+//   GPI: {min: 0, max: 3, palette: ['blue','white','red']}
+// };
+
+// // ========================================================
+// // LOOP THROUGH YEARS
+// // ========================================================
+// for (var year = startYear; year <= endYear; year++) {
+//   var start = ee.Date.fromYMD(year - 1, 1, 1);
+//   var end = ee.Date.fromYMD(year + 1, 12, 31);
+
+//   var l8_filtered = l8.filterBounds(aoi)
+//                       .filterDate(start, end)
+//                       .map(maskL8sr);
+
+//   print('Year ' + year + ' image count:', l8_filtered.size());
+//   if (l8_filtered.size().getInfo() === 0) continue;
+
+//   var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+//   var filled = composite.focal_mean({
+//     radius: 90, units: 'meters', kernelType: 'circle'
+//   }).blend(composite);
+
+//   // Export composite
+//   Export.image.toDrive({
+//     image: composite,
+//     description: 'L8_' + year + '_Composite',
+//     folder: folderName,
+//     fileNamePrefix: 'L8_' + year + '_Composite',
+//     region: aoi,
+//     scale: 30,
+//     crs: 'EPSG:32630',
+//     maxPixels: 1e13
+//   });
+
+//   // Add indices
+//   var indices = addIndices(filled);
+
+//   // Export indices
+//   Export.image.toDrive({
+//     image: indices,
+//     description: 'L8_' + year + '_Composite_Indices',
+//     folder: folderName,
+//     fileNamePrefix: 'L8_' + year + '_Composite_Indices',
+//     region: aoi,
+//     scale: 30,
+//     crs: 'EPSG:32630',
+//     maxPixels: 1e13
+//   });
+
+//   // ---------------------------------------------
+//   // SHOW ONLY 2025 LAYERS ON MAP
+//   // (Uncomment to show for other years)
+//   // ---------------------------------------------
+//   if (year === visualYear) {
+//     Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
+//                 year + ' Composite', false);
+
+//     Object.keys(vis).forEach(function(key) {
+//       Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
+//     });
+//   }
+
+//   // Uncomment this block below to visualize other years
+//   /*
+//   if (year === 2020) {
+//     Map.addLayer(filled, {bands:['B4_p20','B3_p20','B2_p20'], min:0, max:0.3},
+//                 year + ' Composite', false);
+//     Object.keys(vis).forEach(function(key) {
+//       Map.addLayer(indices.select(key), vis[key], year + ' ' + key, false);
+//     });
+//   }
+//   */
+// }
+
+// // ========================================================
+// // LEGEND PANEL (scrollable)
+// // ========================================================
+// var legends = ui.Panel({
+//   layout: ui.Panel.Layout.flow('vertical'),
+//   style: {width: '160px', padding: '8px'}
+// });
+
+// legends.add(ui.Label({
+//   value: 'Spectral Indices (2025)',
+//   style: {fontWeight: 'bold', fontSize: '14px', margin: '4px 0'}
+// }));
+
+// Object.keys(vis).forEach(function (key) {
+//   legends.add(ui.Label(key, {margin: '2px 0 4px 0', fontWeight: 'bold'}));
+//   var colorBar = ui.Thumbnail({
+//     image: ee.Image.pixelLonLat().select(0)
+//             .multiply(vis[key].max - vis[key].min)
+//             .add(vis[key].min),
+//     params: {bbox: [0, 0, 1, 0.1], dimensions: '100x10', format: 'png',
+//             min: vis[key].min, max: vis[key].max, palette: vis[key].palette},
+//     style: {stretch: 'horizontal', margin: '0 0 6px 0', height: '10px'}
+//   });
+//   legends.add(colorBar);
+// });
+
+// // === CORRECTED: Scrollable legend panel (fixed size so scrollbar appears) ===
+// var scrollPanel = ui.Panel(
+//   // widgets
+//   [ legends ],
+//   // layout
+//   ui.Panel.Layout.flow('vertical'),
+//   // style
+//   {
+//     position: 'bottom-left',
+//     width: '180px',
+//     height: '250px',         // fixed height -> scrollbar appears when needed
+//     padding: '4px',
+//     backgroundColor: 'rgba(255,255,255,0.8)'
+//   }
+// );
+
+// Map.add(scrollPanel);
+
+// //////////BUILD IMAGE COMPOSITES//////////////
+// var composites = {};  // storage dictionary
+
+// for (var year = startYear; year <= endYear; year++) {
+//   var start = ee.Date.fromYMD(year - 1, 1, 1);
+//   var end   = ee.Date.fromYMD(year + 1, 12, 31);
+//   var l8_filtered = l8.filterBounds(aoi)
+//                       .filterDate(start, end)
+//                       .map(maskL8sr);
+//   var composite = l8_filtered.reduce(ee.Reducer.percentile([20])).clip(aoi);
+//   var filled = composite.focal_mean({radius: 90, units: 'meters'}).blend(composite);
+
+//   composites[year] = filled;  // store by year
+// }
+
+
+// //////////////BUILDING INDICE COMPOSITES/////////////
+// var composites_with_indices = {};
+// for (var year = startYear; year <= endYear; year++) {
+//   var img = composites[year];
+//   if (year === 2025) { // compute indices only for 2025 to save memory
+//     composites_with_indices[year] = addIndices(img);
+//   }
+// }
 
 
 
 // // =====================================================
-// // STEP 3B/3C — Extract 2025 Composite/ Add Indices to 2025 Composite
+// // STEP 3A — Label Training Samples
 // // =====================================================
-var composite2025 = ee.Image(composites[2025]);
-var composite2025_with_indices = ee.Image(composites_with_indices[2025]);
+
+// // Load your mined polygons
+// print('Mined polygons loaded:', minedPolygons.size());
+
+// // Give mined label = 1
+// var minedSamples = minedPolygons.map(function(f){ return f.set('class', 1); });
+
+// // Define AOI (same one from step 1)
+// var AOI = aoi;  // reuse from your existing script
+
+// // Buffer mined areas to exclude near zones for non-mined sampling
+// var minedBuffer = minedSamples.geometry().buffer(200);
+
+// // Generate random non-mined points outside mined zones
+// var nonMinedSamples = ee.FeatureCollection.randomPoints({
+//   region: AOI.geometry().difference(minedBuffer),
+//   points: 100, // adjust number based on your AOI size
+//   seed: 123
+// }).map(function(f){ return f.set('class', 0); });
+
+// // Merge mined + non-mined
+// var labeledSamples = minedSamples.merge(nonMinedSamples);
+// print('Total labeled samples:', labeledSamples.size());
+
+// Map.addLayer(minedSamples, {color: 'red'}, 'Mined Samples');
+// Map.addLayer(nonMinedSamples, {color: 'green'}, 'Non-Mined Samples');
 
 
 
-// =====================================================
-// STEP 3D — Sample for Classifier
-// =====================================================
-
-var bands = ['B2_p20','B3_p20','B4_p20','B5_p20','B6_p20','B7_p20','NDVI','NDWI','NDBI','GPI'];
-
-var training = composite2025_with_indices.select(bands).sampleRegions({
-  collection: labeledSamples,
-  properties: ['class'],
-  scale: 30
-});
-
-print('Training samples:', training.size());
+// // // =====================================================
+// // // STEP 3B/3C — Extract 2025 Composite/ Add Indices to 2025 Composite
+// // // =====================================================
+// var composite2025 = ee.Image(composites[2025]);
+// var composite2025_with_indices = ee.Image(composites_with_indices[2025]);
 
 
 
-// =====================================================
-// STEP 3E — Train/Test Split
-// =====================================================
-var withRandom = training.randomColumn('random', 42);
-var trainSet = withRandom.filter(ee.Filter.lt('random', 0.7));
-var testSet  = withRandom.filter(ee.Filter.gte('random', 0.7));
+// // =====================================================
+// // STEP 3D — Sample for Classifier
+// // =====================================================
 
-print('Train set size:', trainSet.size());
-print('Test set size:', testSet.size());
+// var bands = ['B2_p20','B3_p20','B4_p20','B5_p20','B6_p20','B7_p20','NDVI','NDWI','NDBI','GPI'];
 
+// var training = composite2025_with_indices.select(bands).sampleRegions({
+//   collection: labeledSamples,
+//   properties: ['class'],
+//   scale: 30
+// });
 
-
-// =====================================================
-// STEP 3F — Train Random Forest Classifier
-// =====================================================
-var rf = ee.Classifier.smileRandomForest({
-  numberOfTrees: 100,
-  variablesPerSplit: null,
-  minLeafPopulation: 1
-}).setOutputMode('CLASSIFICATION');
-
-var trainedRF = rf.train({
-  features: trainSet,
-  classProperty: 'class',
-  inputProperties: bands
-});
-
-print('✅ Random Forest training completed!');
+// print('Training samples:', training.size());
 
 
 
-// =====================================================
-// STEP 3G — Model Evaluation
-// =====================================================
-var validated = testSet.classify(trainedRF);
-var cm = validated.errorMatrix('class', 'classification');
+// // =====================================================
+// // STEP 3E — Train/Test Split
+// // =====================================================
+// var withRandom = training.randomColumn('random', 42);
+// var trainSet = withRandom.filter(ee.Filter.lt('random', 0.7));
+// var testSet  = withRandom.filter(ee.Filter.gte('random', 0.7));
 
-print('=== CONFUSION MATRIX ===');
-print(cm);
-print('Accuracy:', cm.accuracy());
-print('Kappa:', cm.kappa());
-
-
-
-// =====================================================
-// STEP 3H — Feature Importance (Optional)
-// =====================================================
-print('Feature Importance:', ee.Dictionary(trainedRF.explain().get('importance')));
+// print('Train set size:', trainSet.size());
+// print('Test set size:', testSet.size());
 
 
 
-// =====================================================
-// STEP 3I — Inference / Active Mining Prediction
-// =====================================================
-var classified2025 = composite2025_with_indices.select(bands).classify(trainedRF);
+// // =====================================================
+// // STEP 3F — Train Random Forest Classifier
+// // =====================================================
+// var rf = ee.Classifier.smileRandomForest({
+//   numberOfTrees: 100,
+//   variablesPerSplit: null,
+//   minLeafPopulation: 1
+// }).setOutputMode('CLASSIFICATION');
 
-var visParams = {
-  min: 0, max: 1,
-  palette: ['#00FF00', '#FF0000'], // green = non-mined, red = mined
-};
+// var trainedRF = rf.train({
+//   features: trainSet,
+//   classProperty: 'class',
+//   inputProperties: bands
+// });
 
-Map.addLayer(classified2025.clip(AOI), visParams, 'Active Mining (2025)', false);
-
-
-
-// =====================================================
-// STEP 3J — Export Classified Map (Optional)
-// =====================================================
-Export.image.toDrive({
-  image: classified2025.clip(AOI),
-  description: 'Active_Mining_2025_RF',
-  folder: 'GEE_Exports',
-  fileNamePrefix: 'Active_Mining_2025_RF',
-  region: AOI.geometry(),
-  scale: 30,
-  maxPixels: 1e13
-});
+// print('✅ Random Forest training completed!');
 
 
 
+// // =====================================================
+// // STEP 3G — Model Evaluation
+// // =====================================================
+// var validated = testSet.classify(trainedRF);
+// var cm = validated.errorMatrix('class', 'classification');
 
-// =====================================================
-// STEP 3K — Add Legend for Classified Map
-// =====================================================
+// print('=== CONFUSION MATRIX ===');
+// print(cm);
+// print('Accuracy:', cm.accuracy());
+// print('Kappa:', cm.kappa());
 
-// Create a panel to hold the legend
-var legendPanel = ui.Panel({
-  style: {
-    position: 'bottom-left',
-    padding: '8px 15px',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    border: '1px solid black',
-    width: '160px'
-  }
-});
 
-// Legend title
-var legendTitle = ui.Label({
-  value: 'Active Mining (2025)',
-  style: {
-    fontWeight: 'bold',
-    fontSize: '14px',
-    margin: '0 0 8px 0',
-    textAlign: 'center'
-  }
-});
-legendPanel.add(legendTitle);
 
-// Function to create legend entries
-function makeLegendRow(color, name) {
-  var colorBox = ui.Label({
-    style: {
-      backgroundColor: color,
-      padding: '8px',
-      margin: '0 0 4px 0'
-    }
-  });
-  var description = ui.Label({
-    value: name,
-    style: { margin: '0 0 4px 6px', fontSize: '13px' }
-  });
+// // =====================================================
+// // STEP 3H — Feature Importance (Optional)
+// // =====================================================
+// print('Feature Importance:', ee.Dictionary(trainedRF.explain().get('importance')));
 
-  return ui.Panel({
-    widgets: [colorBox, description],
-    layout: ui.Panel.Layout.Flow('horizontal')
-  });
-}
 
-// Add classes
-legendPanel.add(makeLegendRow('#00FF00', 'Non-mined'));
-legendPanel.add(makeLegendRow('#FF0000', 'Mined'));
 
-// Add to the map
-Map.add(legendPanel);
+// // =====================================================
+// // STEP 3I — Inference / Active Mining Prediction
+// // =====================================================
+// var classified2025 = composite2025_with_indices.select(bands).classify(trainedRF);
+
+// var visParams = {
+//   min: 0, max: 1,
+//   palette: ['#00FF00', '#FF0000'], // green = non-mined, red = mined
+// };
+
+// Map.addLayer(classified2025.clip(AOI), visParams, 'Active Mining (2025)', false);
+
+
+
+// // =====================================================
+// // STEP 3J — Export Classified Map (Optional)
+// // =====================================================
+// Export.image.toDrive({
+//   image: classified2025.clip(AOI),
+//   description: 'Active_Mining_2025_RF',
+//   folder: 'GEE_Exports',
+//   fileNamePrefix: 'Active_Mining_2025_RF',
+//   region: AOI.geometry(),
+//   scale: 30,
+//   maxPixels: 1e13
+// });
+
+
+
+
+// // =====================================================
+// // STEP 3K — Add Legend for Classified Map
+// // =====================================================
+
+// // Create a panel to hold the legend
+// var legendPanel = ui.Panel({
+//   style: {
+//     position: 'bottom-left',
+//     padding: '8px 15px',
+//     backgroundColor: 'rgba(255, 255, 255, 0.9)',
+//     border: '1px solid black',
+//     width: '160px'
+//   }
+// });
+
+// // Legend title
+// var legendTitle = ui.Label({
+//   value: 'Active Mining (2025)',
+//   style: {
+//     fontWeight: 'bold',
+//     fontSize: '14px',
+//     margin: '0 0 8px 0',
+//     textAlign: 'center'
+//   }
+// });
+// legendPanel.add(legendTitle);
+
+// // Function to create legend entries
+// function makeLegendRow(color, name) {
+//   var colorBox = ui.Label({
+//     style: {
+//       backgroundColor: color,
+//       padding: '8px',
+//       margin: '0 0 4px 0'
+//     }
+//   });
+//   var description = ui.Label({
+//     value: name,
+//     style: { margin: '0 0 4px 6px', fontSize: '13px' }
+//   });
+
+//   return ui.Panel({
+//     widgets: [colorBox, description],
+//     layout: ui.Panel.Layout.Flow('horizontal')
+//   });
+// }
+
+// // Add classes
+// legendPanel.add(makeLegendRow('#00FF00', 'Non-mined'));
+// legendPanel.add(makeLegendRow('#FF0000', 'Mined'));
+
+// // Add to the map
+// Map.add(legendPanel);
 
