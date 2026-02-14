@@ -1,0 +1,591 @@
+// ============================================================================
+// MAIZE YIELD ESTIMATION PROJECT - GOOGLE EARTH ENGINE CODE
+// Based on Jin et al. (2019) methodology adapted for Ghana
+// ============================================================================
+
+// ============================================================================
+// STEP 1: SETUP AND CONFIGURATION
+// ============================================================================
+
+print('Starting Maize Yield Estimation Pipeline...');
+
+// Load your farm shapefile
+var farms = ee.FeatureCollection("projects/mabeltsadia/assets/maize_2021_2023_clean_normalized");
+Map.centerObject(farms, 8);
+Map.addLayer(farms, {color: 'red'}, 'Farm Boundaries');
+
+// Define the study period (July-October maize season in Ghana)
+var years = [2021, 2022, 2023];
+var seasonStart = '-07-01';  // July 1st
+var seasonEnd = '-10-31';    // October 31st
+
+// Print basic information about the data
+print('Total number of farms:', farms.size());
+print('First farm sample:', farms.first());
+
+// ============================================================================
+// STEP 2: CLOUD MASKING FUNCTIONS
+// ============================================================================
+
+// Sentinel-2 Cloud Masking Function
+// Based on paper: Custom cloud mask outperformed default QA (80% vs 55% accuracy)
+function maskS2clouds(image) {
+  // Using QA60 band for cloud masking (bit 10 = clouds, bit 11 = cirrus)
+  var qa = image.select('QA60');
+  
+  // Bits 10 and 11 are clouds and cirrus
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  
+  // Both flags should be set to zero, indicating clear conditions
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  
+  return image.updateMask(mask)
+      .divide(10000)  // Scale to reflectance values
+      .copyProperties(image, ['system:time_start']);
+}
+
+// Additional cloud masking using brightness threshold
+function maskCloudsAndShadows(image) {
+  // Create a brightness band
+  var brightness = image.select(['B2', 'B3', 'B4']).reduce(ee.Reducer.sum());
+  
+  // Mask very bright pixels (clouds) and very dark pixels (shadows)
+  var cloudMask = brightness.lt(0.3).and(brightness.gt(0.05));
+  
+  return image.updateMask(cloudMask);
+}
+
+// ============================================================================
+// STEP 3: VEGETATION INDICES CALCULATION
+// ============================================================================
+
+// Function to calculate all vegetation indices from the paper
+function addVegetationIndices(image) {
+  
+  // GCVI - Green Chlorophyll Vegetation Index
+  // PRIMARY INDEX from paper - most sensitive to nitrogen
+  var GCVI = image.select('B8').divide(image.select('B3')).subtract(1)
+      .rename('GCVI');
+  
+  // NDVI - Normalized Difference Vegetation Index
+  var NDVI = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+  
+  // Red-edge NDVI variants (using Sentinel-2's red-edge bands)
+  var RDNDVI1 = image.normalizedDifference(['B8', 'B5']).rename('RDNDVI1');
+  var RDNDVI2 = image.normalizedDifference(['B8', 'B6']).rename('RDNDVI2');
+  
+  // Red-edge GCVI variants
+  var RDGCVI1 = image.select('B8').divide(image.select('B5')).subtract(1)
+      .rename('RDGCVI1');
+  var RDGCVI2 = image.select('B8').divide(image.select('B6')).subtract(1)
+      .rename('RDGCVI2');
+  
+  // SWIR-based indices (important for soil moisture and crop stress)
+  var NBR1 = image.normalizedDifference(['B8', 'B11']).rename('NBR1');
+  var NBR2 = image.normalizedDifference(['B8', 'B12']).rename('NBR2');
+  var NDTI = image.normalizedDifference(['B11', 'B12']).rename('NDTI');
+  
+  // Soil-adjusted indices
+  var CRC = image.normalizedDifference(['B11', 'B3']).rename('CRC');
+  var STI = image.select('B11').divide(image.select('B12')).rename('STI');
+  
+  // MERIS Terrestrial Chlorophyll Index
+  var MTCI = image.select('B8').subtract(image.select('B5'))
+      .divide(image.select('B5').subtract(image.select('B4')))
+      .rename('MTCI');
+  
+  // Red Edge Inflection Point
+  var REIP = ee.Image(705).add(
+      image.select('B7').subtract(image.select('B5'))
+      .divide(image.select('B6').subtract(image.select('B5')))
+      .multiply(35)
+  ).rename('REIP');
+  
+  // Add all indices to the image
+  return image.addBands([
+    GCVI, NDVI, RDNDVI1, RDNDVI2, RDGCVI1, RDGCVI2,
+    NBR1, NBR2, NDTI, CRC, STI, MTCI, REIP
+  ]);
+}
+
+// ============================================================================
+// STEP 4: SENTINEL-1 SAR PROCESSING
+// ============================================================================
+
+// Refined Lee Speckle Filter (from paper - reduces SAR noise)
+function refinedLee(image) {
+  // Get image band names
+  var bandNames = image.bandNames();
+  
+  // Define a 7x7 kernel
+  var weights = ee.List.repeat(ee.List.repeat(1, 7), 7);
+  var kernel = ee.Kernel.fixed(7, 7, weights, 3, 3, false);
+  
+  // Calculate mean and variance
+  var mean = image.reduceNeighborhood(ee.Reducer.mean(), kernel);
+  var variance = image.reduceNeighborhood(ee.Reducer.variance(), kernel);
+  
+  // Calculate weights
+  var meanSquared = mean.multiply(mean);
+  var kappa = variance.divide(meanSquared);
+  var weights = variance.divide(variance.add(meanSquared.multiply(kappa)));
+  
+  // Apply filter
+  var filtered = mean.add(image.subtract(mean).multiply(weights));
+  
+  return filtered.rename(bandNames);
+}
+
+// Process Sentinel-1 SAR data
+function processS1(image) {
+  // Apply speckle filter
+  var filtered = refinedLee(image);
+  
+  // Calculate SAR-specific features
+  var VV = filtered.select('VV').rename('VV');
+  var VH = filtered.select('VH').rename('VH');
+  var RATIO = VH.divide(VV).rename('VH_VV_RATIO');
+  var DIFF = VV.subtract(VH).rename('VV_VH_DIFF');
+  
+  return image.addBands([VV, VH, RATIO, DIFF]);
+}
+
+// ============================================================================
+// STEP 5: SEASONAL COMPOSITE GENERATION
+// ============================================================================
+
+// Function to create seasonal median composites (from paper methodology)
+function createSeasonalComposites(collection, startDate, endDate) {
+  
+  // Define three seasonal periods within the growing season
+  var season1Start = ee.Date(startDate);
+  var season1End = season1Start.advance(30, 'day');  // July (early season)
+  
+  var season2Start = season1End;
+  var season2End = season2Start.advance(60, 'day');  // Aug-Sep (mid season)
+  
+  var season3Start = season2End;
+  var season3End = ee.Date(endDate);  // October (late season)
+  
+  // Filter collection for each season and calculate median
+  var s1 = collection.filterDate(season1Start, season1End)
+      .median()
+      .select(['GCVI', 'NDVI', 'RDNDVI1', 'RDGCVI1', 'NBR1', 'NDTI', 'STI'])
+      .rename(['GCVI_S1', 'NDVI_S1', 'RDNDVI1_S1', 'RDGCVI1_S1', 
+               'NBR1_S1', 'NDTI_S1', 'STI_S1']);
+  
+  var s2 = collection.filterDate(season2Start, season2End)
+      .median()
+      .select(['GCVI', 'NDVI', 'RDNDVI1', 'RDGCVI1', 'NBR1', 'NDTI', 'STI'])
+      .rename(['GCVI_S2', 'NDVI_S2', 'RDNDVI1_S2', 'RDGCVI1_S2', 
+               'NBR1_S2', 'NDTI_S2', 'STI_S2']);
+  
+  var s3 = collection.filterDate(season3Start, season3End)
+      .median()
+      .select(['GCVI', 'NDVI', 'RDNDVI1', 'RDGCVI1', 'NBR1', 'NDTI', 'STI'])
+      .rename(['GCVI_S3', 'NDVI_S3', 'RDNDVI1_S3', 'RDGCVI1_S3', 
+               'NBR1_S3', 'NDTI_S3', 'STI_S3']);
+  
+  // Combine all seasonal composites
+  return s1.addBands(s2).addBands(s3);
+}
+
+// ============================================================================
+// STEP 6: HARMONIC REGRESSION FOR PEAK VI EXTRACTION
+// ============================================================================
+
+// Fit harmonic regression to extract peak GCVI (critical from paper)
+function fitHarmonicRegression(collection, startDate, endDate, band) {
+  
+  // Filter collection to growing season
+  var filtered = collection.filterDate(startDate, endDate);
+  
+  // Add time band (days since start)
+  var startMillis = ee.Date(startDate).millis();
+  
+  var addTime = function(image) {
+    var date = image.date();
+    var days = date.difference(startMillis, 'day');
+    var timeImage = ee.Image(days).float().rename('t');
+    return image.addBands(timeImage);
+  };
+  
+  var withTime = filtered.map(addTime);
+  
+  // Add harmonic terms (cos and sin with omega = 1.2 from paper)
+  var omega = 1.2 / 240;  // 240 days growing season
+  
+  var addHarmonics = function(image) {
+    var timeRadians = image.select('t').multiply(2 * Math.PI * omega);
+    var cos1 = timeRadians.cos().rename('cos1');
+    var sin1 = timeRadians.sin().rename('sin1');
+    var cos2 = timeRadians.multiply(2).cos().rename('cos2');
+    var sin2 = timeRadians.multiply(2).sin().rename('sin2');
+    return image.addBands([cos1, sin1, cos2, sin2]);
+  };
+  
+  var withHarmonics = withTime.map(addHarmonics);
+  
+  // Fit harmonic regression
+  var independents = ee.List(['constant', 't', 'cos1', 'sin1', 'cos2', 'sin2']);
+  var dependent = ee.String(band);
+  
+  var harmonicTrend = withHarmonics
+      .select(independents.add(dependent))
+      .reduce(ee.Reducer.linearRegression(independents.length(), 1));
+  
+  // Extract coefficients
+  var coefficients = harmonicTrend.select('coefficients')
+      .arrayProject([0])
+      .arrayFlatten([independents]);
+  
+  // Create time series for prediction (every 5 days)
+  var timeSteps = ee.List.sequence(0, 120, 5);
+  
+  var predictedImages = timeSteps.map(function(day) {
+    day = ee.Number(day);
+    var timeRadians = day.multiply(2 * Math.PI * omega);
+    
+    var prediction = coefficients.select('constant')
+        .add(coefficients.select('t').multiply(day))
+        .add(coefficients.select('cos1').multiply(timeRadians.cos()))
+        .add(coefficients.select('sin1').multiply(timeRadians.sin()))
+        .add(coefficients.select('cos2').multiply(timeRadians.multiply(2).cos()))
+        .add(coefficients.select('sin2').multiply(timeRadians.multiply(2).sin()));
+    
+    return prediction.set('day', day);
+  });
+  
+  // Find peak value
+  var peakValue = ee.ImageCollection.fromImages(predictedImages)
+      .max()
+      .rename('peak_' + band);
+  
+  return peakValue;
+}
+
+// ============================================================================
+// STEP 7: WEATHER DATA EXTRACTION
+// ============================================================================
+
+// Extract rainfall data from CHIRPS
+function extractRainfall(geometry, startDate, endDate) {
+  var chirps = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+      .filterDate(startDate, endDate)
+      .filterBounds(geometry);
+  
+  // Calculate total seasonal rainfall
+  var totalRainfall = chirps.sum().rename('total_rainfall_mm');
+  
+  // Calculate rainfall distribution metrics
+  var meanRainfall = chirps.mean().rename('mean_daily_rainfall');
+  var maxRainfall = chirps.max().rename('max_daily_rainfall');
+  
+  // Count rainy days (>1mm)
+  var rainyDays = chirps.map(function(img) {
+    return img.gt(1);
+  }).sum().rename('rainy_days');
+  
+  return totalRainfall.addBands([meanRainfall, maxRainfall, rainyDays]);
+}
+
+// Extract temperature data from MODIS LST
+function extractTemperature(geometry, startDate, endDate) {
+  var modisLST = ee.ImageCollection('MODIS/006/MYD11A2')
+      .filterDate(startDate, endDate)
+      .filterBounds(geometry)
+      .select(['LST_Day_1km', 'LST_Night_1km']);
+  
+  // Convert from Kelvin to Celsius and scale
+  var lstCelsius = modisLST.map(function(img) {
+    return img.multiply(0.02).subtract(273.15)
+        .copyProperties(img, ['system:time_start']);
+  });
+  
+  // Calculate mean day and night temperature
+  var meanDayTemp = lstCelsius.select('LST_Day_1km').mean()
+      .rename('mean_day_temp_C');
+  var meanNightTemp = lstCelsius.select('LST_Night_1km').mean()
+      .rename('mean_night_temp_C');
+  
+  // Calculate maximum day temperature
+  var maxDayTemp = lstCelsius.select('LST_Day_1km').max()
+      .rename('max_day_temp_C');
+  
+  return meanDayTemp.addBands([meanNightTemp, maxDayTemp]);
+}
+
+// ============================================================================
+// STEP 8: SOIL DATA EXTRACTION (AfSIS)
+// ============================================================================
+
+// Extract soil properties from AfSIS database
+function extractSoilProperties(geometry) {
+  
+  // AfSIS soil grids for Africa (0-20cm depth)
+  // Nitrogen (most important factor from paper - 72% of yield variation)
+  var nitrogen = ee.Image("OpenLandMap/SOL/SOL_ORGANIC-CARBON_USDA-6A1C_M/v02")
+      .select('b0').multiply(0.1).rename('soil_N_g_kg');  // Approximate N from OC
+  
+  // Organic Carbon
+  var organicCarbon = ee.Image("OpenLandMap/SOL/SOL_ORGANIC-CARBON_USDA-6A1C_M/v02")
+      .select('b0').rename('soil_OC_g_kg');
+  
+  // pH
+  var pH = ee.Image("OpenLandMap/SOL/SOL_PH-H2O_USDA-4C1A2A_M/v02")
+      .select('b0').multiply(0.1).rename('soil_pH');
+  
+  // Texture - Clay content
+  var clay = ee.Image("OpenLandMap/SOL/SOL_CLAY-WFRACTION_USDA-3A1A1A_M/v02")
+      .select('b0').rename('soil_clay_percent');
+  
+  // Texture - Sand content
+  var sand = ee.Image("OpenLandMap/SOL/SOL_SAND-WFRACTION_USDA-3A1A1A_M/v02")
+      .select('b0').rename('soil_sand_percent');
+  
+  // Bulk density
+  var bulkDensity = ee.Image("OpenLandMap/SOL/SOL_BULKDENS-FINEEARTH_USDA-4A1H_M/v02")
+      .select('b0').multiply(0.01).rename('soil_bulk_density');
+  
+  return organicCarbon.addBands([nitrogen, pH, clay, sand, bulkDensity]);
+}
+
+// ============================================================================
+// STEP 9: FEATURE EXTRACTION PER FARM
+// ============================================================================
+
+// Main function to extract all features for a single farm
+function extractFarmFeatures(farm) {
+  
+  // Get farm properties
+  var farmId = farm.get('farm_id');
+  var year = farm.get('year');
+  var geometry = farm.geometry();
+  
+  // Define date range for this farm's growing season
+  var startDate = ee.String(year).cat(seasonStart);
+  var endDate = ee.String(year).cat(seasonEnd);
+  
+  // -------------------
+  // SENTINEL-2 PROCESSING
+  // -------------------
+  
+  var s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+      .filterBounds(geometry)
+      .filterDate(startDate, endDate)
+      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+      .map(maskS2clouds)
+      .map(addVegetationIndices);
+  
+  print('Sentinel-2 images available for', farmId, ':', s2.size());
+  
+  // Create seasonal composites
+  var seasonalComposite = createSeasonalComposites(s2, startDate, endDate);
+  
+  // Fit harmonic regression for peak GCVI (most important from paper)
+  var peakGCVI = fitHarmonicRegression(s2, startDate, endDate, 'GCVI');
+  var peakNDVI = fitHarmonicRegression(s2, startDate, endDate, 'NDVI');
+  
+  // Combine seasonal and harmonic features
+  var opticalFeatures = seasonalComposite.addBands([peakGCVI, peakNDVI]);
+  
+  // -------------------
+  // SENTINEL-1 SAR PROCESSING
+  // -------------------
+  
+  var s1 = ee.ImageCollection('COPERNICUS/S1_GRD')
+      .filterBounds(geometry)
+      .filterDate(startDate, endDate)
+      .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+      .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
+      .filter(ee.Filter.eq('instrumentMode', 'IW'))
+      .map(processS1);
+  
+  // Calculate median SAR values for the season
+  var sarFeatures = s1.median()
+      .select(['VV', 'VH', 'VH_VV_RATIO', 'VV_VH_DIFF']);
+  
+  // -------------------
+  // WEATHER DATA
+  // -------------------
+  
+  var rainfall = extractRainfall(geometry, startDate, endDate);
+  var temperature = extractTemperature(geometry, startDate, endDate);
+  
+  // -------------------
+  // SOIL DATA
+  // -------------------
+  
+  var soil = extractSoilProperties(geometry);
+  
+  // -------------------
+  // COMBINE ALL FEATURES
+  // -------------------
+  
+  var allFeatures = opticalFeatures
+      .addBands(sarFeatures)
+      .addBands(rainfall)
+      .addBands(temperature)
+      .addBands(soil);
+  
+  // Reduce to mean values within farm boundary
+  var stats = allFeatures.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: geometry,
+    scale: 10,
+    maxPixels: 1e9
+  });
+  
+  // Add farm metadata to the results
+  return farm.set(stats)
+      .set('num_s2_images', s2.size())
+      .set('num_s1_images', s1.size());
+}
+
+// ============================================================================
+// STEP 10: PROCESS ALL FARMS FOR ALL YEARS
+// ============================================================================
+
+print('Processing all farms - this may take several minutes...');
+
+// Map the feature extraction over all farms
+var farmsWithFeatures = farms.map(extractFarmFeatures);
+
+// Print sample result
+print('Sample farm with extracted features:', farmsWithFeatures.first());
+print('Total farms processed:', farmsWithFeatures.size());
+
+// ============================================================================
+// STEP 11: EXPORT RESULTS
+// ============================================================================
+
+// Export to Google Drive as CSV
+Export.table.toDrive({
+  collection: farmsWithFeatures,
+  description: 'Ghana_Maize_Features_AllYears',
+  folder: 'GEE_Exports',
+  fileFormat: 'CSV'
+});
+
+// Export for each year separately (for easier handling)
+years.forEach(function(year) {
+  var yearlyFarms = farmsWithFeatures.filter(ee.Filter.eq('year', year));
+  
+  Export.table.toDrive({
+    collection: yearlyFarms,
+    description: 'Ghana_Maize_Features_' + year,
+    folder: 'GEE_Exports',
+    fileFormat: 'CSV'
+  });
+});
+
+// ============================================================================
+// STEP 12: VISUALIZATION
+// ============================================================================
+
+// Visualize one example farm (2023)
+var exampleFarm = farms.filter(ee.Filter.eq('year', 2023)).first();
+var exampleGeometry = exampleFarm.geometry();
+
+// Get Sentinel-2 composite for visualization
+var s2Example = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(exampleGeometry)
+    .filterDate('2023-07-01', '2023-10-31')
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+    .map(maskS2clouds)
+    .median();
+
+// Add RGB composite to map
+Map.addLayer(s2Example, {
+  bands: ['B4', 'B3', 'B2'],
+  min: 0,
+  max: 0.3
+}, 'Sentinel-2 RGB (2023 Example)');
+
+// Calculate and display GCVI for the example
+var gcviExample = s2Example.select('B8').divide(s2Example.select('B3')).subtract(1);
+Map.addLayer(gcviExample.clip(exampleGeometry), {
+  min: 0,
+  max: 5,
+  palette: ['brown', 'yellow', 'green', 'darkgreen']
+}, 'GCVI (2023 Example)');
+
+// Add NDVI for comparison
+var ndviExample = s2Example.normalizedDifference(['B8', 'B4']);
+Map.addLayer(ndviExample.clip(exampleGeometry), {
+  min: 0,
+  max: 0.8,
+  palette: ['brown', 'yellow', 'green', 'darkgreen']
+}, 'NDVI (2023 Example)');
+
+// ============================================================================
+// STEP 13: GENERATE SUMMARY STATISTICS
+// ============================================================================
+
+// Create a chart showing GCVI time series for example farm
+var gcviTimeSeries = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(exampleGeometry)
+    .filterDate('2023-07-01', '2023-10-31')
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+    .map(maskS2clouds)
+    .map(addVegetationIndices)
+    .select('GCVI');
+
+var chart = ui.Chart.image.series({
+  imageCollection: gcviTimeSeries,
+  region: exampleGeometry,
+  reducer: ee.Reducer.mean(),
+  scale: 10
+}).setOptions({
+  title: 'GCVI Time Series - Example Farm (2023)',
+  vAxis: {title: 'GCVI'},
+  hAxis: {title: 'Date'},
+  lineWidth: 2,
+  pointSize: 4
+});
+
+print(chart);
+
+// ============================================================================
+// SUMMARY AND NEXT STEPS
+// ============================================================================
+
+print('========================================');
+print('GEE PROCESSING COMPLETE!');
+print('========================================');
+print('');
+print('What was extracted for each farm:');
+print('1. Seasonal Composites (3 periods):');
+print('   - GCVI, NDVI, Red-edge indices');
+print('   - SWIR-based indices (NBR1, NDTI, STI)');
+print('');
+print('2. Harmonic Regression Features:');
+print('   - Peak GCVI (most important)');
+print('   - Peak NDVI');
+print('');
+print('3. SAR Features (Sentinel-1):');
+print('   - VV, VH backscatter');
+print('   - VH/VV ratio, VV-VH difference');
+print('');
+print('4. Weather Data:');
+print('   - Total rainfall (July-October)');
+print('   - Mean/max temperature');
+print('   - Rainy days count');
+print('');
+print('5. Soil Properties:');
+print('   - Nitrogen, Organic Carbon');
+print('   - pH, Clay, Sand content');
+print('');
+print('========================================');
+print('NEXT STEPS:');
+print('========================================');
+print('1. Click "Tasks" tab → Run the export jobs');
+print('2. Download CSV from Google Drive');
+print('3. Move to TensorFlow/Python for:');
+print('   - Feature selection (Random Forest importance)');
+print('   - Model training (RF Regression or Neural Network)');
+print('   - Yield prediction');
+print('   - Cross-validation by year');
+print('========================================');
