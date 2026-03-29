@@ -10,7 +10,8 @@
 print('Starting Maize Yield Estimation Pipeline...');
 
 // Load your farm shapefile
-var farms = ee.FeatureCollection("projects/mabeltsadia/assets/maize_2021_2023_clean_normalized");
+//var farms = ee.FeatureCollection("projects/mabeltsadia/assets/maize_2021_2023_clean_normalized");
+var farms = ee.FeatureCollection("projects/mabeltsadia/assets/maize_yield_updated_dataset");
 Map.centerObject(farms, 8);
 Map.addLayer(farms, {color: 'red'}, 'Farm Boundaries');
 
